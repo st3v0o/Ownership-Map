@@ -22,7 +22,7 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(__file__))
 from summary import build_summary  # noqa: E402
-from classify import (CATEGORIES, COMPANY, classify, normalize_street, owner_key, same_address,
+from classify import (CATEGORIES, COMPANY, classify, normalize_street, owner_group, owner_key, same_address,
                       same_house_number)  # noqa: E402
 
 LAYER_URL = os.environ.get(
@@ -249,7 +249,7 @@ def main():
     company_owners = collections.Counter()
     samples = collections.defaultdict(list)
     kept = skipped = 0
-    facets = {k: [] for k in ("c", "v", "u", "w", "x", "y")}
+    facets = {k: [] for k in ("c", "v", "u", "w", "x", "y")}  # plus g, added after the loop
     records = []  # one small dict per lot for summary.json
 
     nd_path = os.path.join(args.out, "parcels.ndjson")
@@ -307,7 +307,7 @@ def main():
             facets["x"].append(round((cx - FACET_ORIGIN[0]) * 1e5))
             facets["y"].append(round((cy - FACET_ORIGIN[1]) * 1e5))
             records.append({
-                "key": owner_key(owner), "name": owner, "c": props["c"], "w": props["w"],
+                "key": owner_group(owner, cat, mail_line), "name": owner, "c": props["c"], "w": props["w"],
                 "v": p.get(f_value) if f_value else None, "mail": mail_line,
                 "city": str(p.get(f_mcity) or "").strip() if f_mcity else "",
                 "state": str(p.get(f_mstate) or "").strip() if f_mstate else "",
@@ -337,25 +337,23 @@ def main():
             print(f"  {owner[:40]:<40} | {addr[:28]:<28} | {mail[:28]:<28} | {reason}")
 
     generated = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
-    summary, featured = build_summary(records, CATEGORIES, generated)
+    summary, owner_ids = build_summary(records, CATEGORIES, generated)
+    facets["g"] = [owner_ids.get(r["key"], 0) for r in records]
 
     # Tag lots so the map can outline an owner: k = rank among the largest
-    # company owners (map panel), g = owner id from summary.json (summary page).
+    # company owners (map panel), g = owner id (popup "see all", summary page).
     top = {n: i + 1 for i, (n, _) in enumerate(company_owners.most_common(25))}
     tmp = nd_path + ".tmp"
     with open(nd_path) as src, open(tmp, "w") as dst:
-        for line in src:
+        for line, rec in zip(src, records):  # same order: one record per lot
             f = json.loads(line)
-            key = owner_key(f["properties"]["o"])
-            k = top.get(key) if f["properties"]["c"] == CATEGORIES.index(COMPANY) else None
-            g = featured.get(key)
+            k = top.get(owner_key(f["properties"]["o"])) if f["properties"]["c"] == CATEGORIES.index(COMPANY) else None
             if k:
                 f["properties"]["k"] = k
+            g = owner_ids.get(rec["key"])
             if g:
                 f["properties"]["g"] = g
-            if k or g:
-                line = json.dumps(f) + "\n"
-            dst.write(line)
+            dst.write(json.dumps(f) + "\n")
     os.replace(tmp, nd_path)
 
     stats = {

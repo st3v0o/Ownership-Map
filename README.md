@@ -9,7 +9,10 @@ An interactive map of every residential lot in Richmond, colored by who owns it:
 | 🟥 Red | Company-owned | LLC, corporation, partnership, bank, investor |
 | ⬜ Gray | Public / non-profit | Government, housing authority, church, community land trust, university |
 
-Tap any lot to see the owner, mailing address, and why it got its color. The panel
+Tap any lot to see the owner, mailing address, and why it got its color. **See all N
+properties by this owner** zooms out to fit everything that owner has, outlines it and fades
+the rest; the bar at the top clears it. Companies are matched by name; people by name and
+mailing address, so two different John Smiths are not merged. The panel
 has linked charts that filter the map and each other:
 
 - **Assessed value** histogram, stacked by owner type: drag across it or use the

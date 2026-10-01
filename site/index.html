@@ -114,6 +114,16 @@
   .pop dt { color: var(--muted); }
   .pop dd { margin: 0; word-break: break-word; }
 
+  #owner-bar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 3; display: none;
+    align-items: center; gap: 10px; max-width: min(520px, calc(100% - 24px)); background: var(--ink); color: #fff;
+    padding: 7px 8px 7px 14px; border-radius: 999px; font-size: 13px; box-shadow: 0 4px 14px #0003; }
+  #owner-bar.show { display: flex; }
+  #owner-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #owner-bar button { flex: none; border: 0; background: #ffffff26; color: #fff; width: 24px; height: 24px;
+    border-radius: 50%; font-size: 15px; line-height: 1; cursor: pointer; }
+  .pop .seeall { display: block; width: 100%; margin-top: 10px; padding: 8px; border: 0; border-radius: 8px;
+    background: var(--ink); color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .pop .only { margin-top: 8px; font-size: 12px; color: var(--muted); }
   #msg { position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--ink);
     color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 13px; z-index: 3; display: none; }
 
@@ -125,6 +135,7 @@
     #panel.collapsed .legend li { padding: 3px 4px; }
     #panel.collapsed form.search { display: none; }
     #panel.collapsed #more { display: flex; }
+    #owner-bar { top: 10px; left: 12px; right: 12px; transform: none; max-width: none; }
     #panel h1 { cursor: pointer; padding-right: 28px; }
     form.search { margin: 12px 0 0; }
     .toggle { display: block; }
@@ -199,6 +210,7 @@
     estimate, not a legal determination.
   </p>
 </aside>
+<div id="owner-bar" role="status"><span id="owner-bar-text"></span><button id="owner-bar-x" aria-label="Clear outline">×</button></div>
 <div id="msg"></div>
 
 <script src="vendor/maplibre-gl.js"></script>
@@ -242,12 +254,13 @@ maplibregl.addProtocol("pmtiles", protocol.tile);
 // underneath its labels so street names stay readable.
 const BASEMAP = "https://tiles.openfreemap.org/styles/positron";
 let labelsBelow;  // first label layer; parcel layers are inserted before it
+const FILL_OPACITY = ["interpolate", ["linear"], ["zoom"], 11, 0.8, 16, 0.6];
 
 const map = new maplibregl.Map({
   container: "map",
   center: RICHMOND.center,
   zoom: RICHMOND.zoom,
-  minZoom: 10,
+  minZoom: 11,  // parcel tiles start at z11
   maxZoom: 19,
   maxBounds: [[-77.75, 37.35], [-77.15, 37.75]],
   hash: true,
@@ -261,7 +274,7 @@ map.once("style.load", () => {
   map.addLayer({ id: "parcels-fill", type: "fill", source: "parcels", "source-layer": "parcels",
     paint: {
       "fill-color": ["match", ["get", "c"], 0, CATS[0].hex, 1, CATS[1].hex, 2, CATS[2].hex, CATS[3].hex],
-      "fill-opacity": ["interpolate", ["linear"], ["zoom"], 11, 0.8, 16, 0.6],
+      "fill-opacity": FILL_OPACITY,
     } }, labelsBelow);
   map.addLayer({ id: "parcels-line", type: "line", source: "parcels", "source-layer": "parcels", minzoom: 14.5,
     paint: { "line-color": "#ffffff", "line-width": ["interpolate", ["linear"], ["zoom"], 14.5, 0.3, 18, 1.5] } }, labelsBelow);
@@ -270,22 +283,25 @@ map.once("style.load", () => {
   applyFilter();
   openDeepLink();
 });
+// The attribution box starts open; on phones it covers the map, so fold it
+// once the map has settled (MapLibre re-opens it while loading).
+map.once("idle", () => {
+  if (window.innerWidth <= 640) document.querySelector(".maplibregl-ctrl-attrib")?.classList.remove("maplibregl-compact-show");
+});
 
 // Links from summary.html: ?g=<owner id>&n=<name>&b=<west,south,east,north> outlines an
 // owner's lots and zooms to them; ?pid=<parcel id> selects one lot.
 function openDeepLink() {
   const q = new URLSearchParams(location.search);
   const g = +q.get("g"), pid = q.get("pid"), b = (q.get("b") || "").split(",").map(Number), name = q.get("n");
-  if (g) map.addLayer({ id: "owner-hl", type: "line", source: "parcels", "source-layer": "parcels",
-    filter: ["==", ["get", "g"], g],
-    paint: { "line-color": "#111", "line-width": ["interpolate", ["linear"], ["zoom"], 11, 1.5, 16, 3] } }, labelsBelow);
+  if (g) outline(["==", ["get", "g"], g], name || "Owner's properties");
   if (pid) map.setFilter("parcels-selected", ["==", ["get", "id"], pid]);
   if (b.length === 4 && b.every(Number.isFinite)) {
     const phone = window.innerWidth <= 640;
     map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { maxZoom: 17, duration: 0,
       padding: phone ? { top: 40, bottom: 240, left: 30, right: 30 } : { top: 60, bottom: 60, left: 380, right: 60 } });
   }
-  if (name) flash((g ? "Outlined: " : "") + name, 6000);
+  if (name && !g) flash(name, 6000);
   if (g || pid || name) history.replaceState(null, "", location.pathname + location.hash);
 }
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
@@ -315,6 +331,39 @@ function applyFilter() {
   map.setFilter("parcels-line", f);
 }
 
+// ---- owner outline ------------------------------------------------------
+// One owner's lots are outlined at a time; the bar at the top names them and clears it.
+function outline(filter, label) {
+  if (map.getLayer("owner-hl")) map.setFilter("owner-hl", filter);
+  else map.addLayer({ id: "owner-hl", type: "line", source: "parcels", "source-layer": "parcels", filter,
+    paint: { "line-color": "#111", "line-width": ["interpolate", ["linear"], ["zoom"], 11, 2, 16, 3] } }, labelsBelow);
+  // Fade everyone else's lots so this owner's stand out when zoomed out.
+  map.setPaintProperty("parcels-fill", "fill-opacity", ["case", filter, 0.95, 0.12]);
+  document.getElementById("owner-bar-text").textContent = label;
+  document.getElementById("owner-bar").classList.add("show");
+}
+function clearOutline() {
+  if (map.getLayer("owner-hl")) map.removeLayer("owner-hl");
+  if (map.getLayer("parcels-fill")) map.setPaintProperty("parcels-fill", "fill-opacity", FILL_OPACITY);
+  document.getElementById("owner-bar").classList.remove("show");
+  document.querySelectorAll("#owners li").forEach(x => x.classList.remove("hl"));
+}
+document.getElementById("owner-bar-x").onclick = clearOutline;
+
+// All lots of owner g (from facets.json), and a map view that fits them.
+const lotsOf = g => { const out = []; if (D?.g) for (let i = 0; i < D.n; i++) if (D.g[i] === g) out.push(i); return out; };
+function fitLots(idx) {
+  const [ox, oy] = D.origin, s = D.scale;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const i of idx) {
+    x0 = Math.min(x0, D.x[i]); x1 = Math.max(x1, D.x[i]); y0 = Math.min(y0, D.y[i]); y1 = Math.max(y1, D.y[i]);
+  }
+  const phone = window.innerWidth <= 640;
+  map.fitBounds([[ox + x0 / s, oy + y0 / s], [ox + x1 / s, oy + y1 / s]], { maxZoom: 17, duration: 900,
+    padding: phone ? { top: 70, bottom: 230, left: 30, right: 30 } : { top: 70, bottom: 50, left: 380, right: 60 } });
+}
+const ownerName = o => String(o || "").replace(/\s*(\bc\s*\/\s*o\b|\s\/\s*co\b|\battn\b).*$/i, "").trim();
+
 // ---- legend -----------------------------------------------------------
 const legend = document.getElementById("legend");
 CATS.forEach((c, i) => {
@@ -342,15 +391,11 @@ fetch("data/stats.json").then(r => r.json()).then(s => {
 document.getElementById("owners").addEventListener("click", e => {
   const li = e.target.closest("li"); if (!li || !map.getSource("parcels")) return;
   const rank = +li.dataset.rank, name = li.textContent.split(" — ")[0];
-  const on = map.getLayer("owner-hl") && li.classList.contains("hl");
-  document.querySelectorAll("#owners li").forEach(x => x.classList.remove("hl"));
-  if (map.getLayer("owner-hl")) map.removeLayer("owner-hl");
+  const on = li.classList.contains("hl");
+  clearOutline();
   if (on) return;
   li.classList.add("hl");
-  map.addLayer({ id: "owner-hl", type: "line", source: "parcels", "source-layer": "parcels",
-    filter: ["==", ["get", "k"], rank],
-    paint: { "line-color": "#111", "line-width": ["interpolate", ["linear"], ["zoom"], 11, 1.5, 16, 3] } }, labelsBelow);
-  flash(`Outlined: ${name}. Tap again to clear.`);
+  outline(["==", ["get", "k"], rank], `${name} · ${li.querySelector("b").textContent} properties`);
 });
 
 // ---- linked counts and charts ------------------------------------------
@@ -556,14 +601,26 @@ map.on("click", "parcels-fill", e => {
     ["Owner", p.o], ["Mailing address", p.m], ["Tax bill goes", WHERE[p.w]], ["Land use", p.lu],
     ["Year built", p.y], ["Assessed value", p.v ? "$" + fmt(+p.v) : ""], ["Parcel ID", p.id],
   ].filter(r => r[1]).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("");
-  new maplibregl.Popup({ maxWidth: "300px" }).setLngLat(e.lngLat).setHTML(
+  const g = +p.g, n = g ? lotsOf(g).length : 0;
+  const more = n > 1 ? `<button class="seeall" data-g="${g}">See all ${fmt(n)} properties by this owner →</button>`
+    : n === 1 ? `<div class="only">This is the only residential property this owner has in Richmond.</div>` : "";
+  // On phones, slide the lot toward the top so the popup clears the bottom sheet.
+  if (window.innerWidth <= 640 && e.point.y > 120) map.panBy([0, e.point.y - 120], { duration: 300 });
+  const popup = new maplibregl.Popup({ maxWidth: "300px" }).setLngLat(e.lngLat).setHTML(
     `<div class="pop"><div class="addr">${esc(p.a || "No address")}</div>
      <span class="chip" style="background:${c.hex}">${c.label}</span>
-     <div class="why">${esc(p.r)}</div><dl>${rows}</dl></div>`
+     <div class="why">${esc(p.r)}</div><dl>${rows}</dl>${more}</div>`
   ).on("close", () => {
     map.setFilter("parcels-selected", ["==", ["get", "id"], ""]);
     picked = null; updateView();
   }).addTo(map);
+  popup.getElement().querySelector(".seeall")?.addEventListener("click", () => {
+    const idx = lotsOf(g);
+    popup.remove();
+    outline(["==", ["get", "g"], g], `${ownerName(p.o)} · ${fmt(idx.length)} properties`);
+    fitLots(idx);
+    if (window.innerWidth <= 640) setCollapsed(true);
+  });
 });
 map.on("mouseenter", "parcels-fill", () => map.getCanvas().style.cursor = "pointer");
 map.on("mouseleave", "parcels-fill", () => map.getCanvas().style.cursor = "");

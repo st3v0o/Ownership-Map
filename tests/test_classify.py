@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 from classify import (  # noqa: E402
     COMPANY, INDIVIDUAL_LANDLORD, OWNER_OCCUPIED, PUBLIC_NONPROFIT, classify,
-    display_name, owner_key, same_address, same_house_number,
+    display_name, owner_group, owner_key, same_address, same_house_number,
 )
 
 
@@ -85,6 +85,17 @@ class CareOfTest(unittest.TestCase):
         cat, _ = classify("Baldwin Kenneth R Sr Trust C/o Thomas Baldwin", "4011 Collingbourne Road",
                           "4011 Collingbourne Rd")
         self.assertEqual(cat, OWNER_OCCUPIED)
+
+
+class OwnerGroupTest(unittest.TestCase):
+    def test_companies_group_by_name(self):
+        self.assertEqual(owner_group("Cava Capital Llc", COMPANY, "2405 Westwood Ave #200"),
+                         owner_group("Cava Capital Llc C/o Agent", COMPANY, "PO Box 1"))
+
+    def test_people_need_the_same_mailing_address(self):
+        a = owner_group("Smith John", INDIVIDUAL_LANDLORD, "9 Oak St")
+        self.assertEqual(a, owner_group("Smith John", INDIVIDUAL_LANDLORD, "9 OAK STREET"))
+        self.assertNotEqual(a, owner_group("Smith John", OWNER_OCCUPIED, "100 Main St"))
 
 
 class NeighborhoodAndWeakWordTest(unittest.TestCase):

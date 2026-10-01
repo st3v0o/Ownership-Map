@@ -4,12 +4,12 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
-from classify import CATEGORIES, owner_key  # noqa: E402
+from classify import CATEGORIES, owner_group  # noqa: E402
 from summary import build_summary  # noqa: E402
 
 
 def lot(name, c, v, w=1, mail="9 OAK ST", city="Richmond", state="VA", x=-77.4, y=37.5, i=0):
-    return {"key": owner_key(name), "name": name, "c": c, "v": v, "w": w, "mail": mail,
+    return {"key": owner_group(name, c, mail), "name": name, "c": c, "v": v, "w": w, "mail": mail,
             "city": city, "state": state, "id": str(i), "a": f"{i} Main St", "lu": "Single Family",
             "x": x, "y": y}
 
@@ -24,7 +24,7 @@ class SummaryTest(unittest.TestCase):
             lot("Smith John", 0, 300_000, w=0, mail="5 Main St", i=5),
             lot("Other Llc", 2, 50_000, mail="9 Oak Street", i=6),  # shares Big Llc's mailing address
         ]
-        self.s, self.featured = build_summary(self.records, CATEGORIES, "2026-10-01")
+        self.s, self.ids = build_summary(self.records, CATEGORIES, "2026-10-01")
 
     def test_top_owners_by_lots_groups_care_of(self):
         top = self.s["owners"]["lots"]["all"][0]
@@ -42,9 +42,12 @@ class SummaryTest(unittest.TestCase):
         self.assertEqual([r["name"] for r in self.s["owners"]["lots"]["2"]], ["Big Llc", "Other Llc"])
         self.assertEqual([r["name"] for r in self.s["owners"]["lots"]["0"]], ["Smith John"])
 
-    def test_featured_ids_match_rows(self):
+    def test_every_owner_gets_an_id(self):
         top = self.s["owners"]["lots"]["all"][0]
-        self.assertEqual(self.featured[owner_key("Big Llc")], top["g"])
+        self.assertEqual(self.ids[owner_group("Big Llc", 2, "")], top["g"])
+        self.assertEqual(top["g"], 1)  # largest owner gets the smallest id
+        self.assertEqual(len(self.ids), 4)
+        self.assertEqual(sorted(self.ids.values()), [1, 2, 3, 4])
 
     def test_shared_mailing_address(self):
         m = self.s["mail_groups"][0]
