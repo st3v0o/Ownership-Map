@@ -164,10 +164,11 @@ const mapLink = ({ g, b, n, pid, at }) => {
   return `./?${q}${at ? `#17.5/${at[1].toFixed(5)}/${at[0].toFixed(5)}` : ""}`;
 };
 
+const DATA_VERSION = "dev";  // set to the build id by the workflow; see index.html
 let S;
 const state = { sort: "lots", cat: "all", nOwners: 25, nProps: 10, nMail: 10 };
 
-fetch("data/summary.json").then(r => r.json()).then(s => { S = s; render(); })
+fetch(`data/summary.json?v=${DATA_VERSION}`).then(r => r.json()).then(s => { S = s; render(); })
   .catch(() => document.getElementById("meta").textContent = "Summary data is not available yet.");
 
 function render() {

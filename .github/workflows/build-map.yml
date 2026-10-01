@@ -48,6 +48,12 @@ jobs:
           scripts/build_tiles.sh build/parcels.ndjson site/data/parcels.pmtiles
           cp build/stats.json build/facets.json build/summary.json site/data/
 
+      - name: Stamp data version into pages
+        # Data URLs get ?v=<run id> so browsers never mix cached files from two builds.
+        run: |
+          sed -i 's/const DATA_VERSION = "dev"/const DATA_VERSION = "${{ github.run_id }}"/' site/index.html site/summary.html
+          grep -c 'DATA_VERSION = "${{ github.run_id }}"' site/index.html site/summary.html
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
