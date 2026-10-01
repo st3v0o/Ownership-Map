@@ -125,7 +125,7 @@ def main():
     f_mcity = pick_field(fields, ["MailCity"], must=("MAIL", "CITY"))
     f_mstate = pick_field(fields, ["MailState"], must=("MAIL", "STATE"))
     f_mzip = pick_field(fields, ["MailZip", "MailZipCode"], must=("MAIL", "ZIP"))
-    f_addr = pick_field(fields, ["AddressLabel", "SiteAddress", "PropertyAddress", "LocationAddress", "Address", "FullAddress"], must=("ADDR",), avoid=("MAIL", "OWN"))
+    f_addr = pick_field(fields, ["AsrLocationBldgNo", "AddressLabel", "SiteAddress", "PropertyAddress", "LocationAddress", "Address", "FullAddress"], must=("ADDR",), avoid=("MAIL", "OWN"))
     f_lu = pick_field(fields, ["LandUse", "LandUseDesc", "LandUseDescription", "LUC", "PropertyClass"], must=("LAND", "USE"))
     f_id = pick_field(fields, ["ParcelID", "PIN", "Parcel_ID", "GPIN"], must=("PARCEL",)) or oid
     f_value = pick_field(fields, ["TotalValue", "TotalAssessment", "AssessedValue"], must=("TOTAL", "VAL"))
@@ -137,6 +137,12 @@ def main():
     print("Field mapping:", json.dumps(picked, indent=2))
     if not (f_owner and f_mail and f_addr):
         sys.exit("Could not find owner / mailing address / property address fields; see field list above.")
+
+    sample = get_json(LAYER_URL, {"f": "json", "where": "1=1", "outFields": "*",
+                                  "returnGeometry": "false", "resultRecordCount": 8})
+    print("Sample records:")
+    for feat in sample.get("features", []):
+        print(" ", json.dumps(feat["attributes"])[:600])
 
     out_fields = sorted({oid, *[v for v in picked.values() if v]})
     page = min(int(meta.get("maxRecordCount") or 1000), 2000)
