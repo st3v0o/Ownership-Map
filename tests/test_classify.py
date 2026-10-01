@@ -6,7 +6,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 from classify import (  # noqa: E402
     COMPANY, INDIVIDUAL_LANDLORD, OWNER_OCCUPIED, PUBLIC_NONPROFIT, classify,
-    owner_key, same_address, same_house_number,
+    display_name, owner_key, same_address, same_house_number,
 )
 
 
@@ -73,6 +73,13 @@ class CareOfTest(unittest.TestCase):
         self.assertEqual(owner_key("Awe Brookside Owner Llc C/o West End Capital Group Llc"),
                          "AWE BROOKSIDE OWNER LLC")
         self.assertEqual(owner_key("Renaissance Richmond Llc Attn Tony Webb"), "RENAISSANCE RICHMOND LLC")
+        self.assertEqual(owner_key("Awe Brookside Owner Llc /co West End Capital Group Llc"),
+                         "AWE BROOKSIDE OWNER LLC")
+
+    def test_display_name_keeps_case(self):
+        self.assertEqual(display_name("Awe Brookside Owner Llc C/o West End Capital Group Llc"),
+                         "Awe Brookside Owner Llc")
+        self.assertEqual(display_name("Smith John"), "Smith John")
 
     def test_care_of_does_not_hide_individual(self):
         cat, _ = classify("Baldwin Kenneth R Sr Trust C/o Thomas Baldwin", "4011 Collingbourne Road",
@@ -97,7 +104,7 @@ class NeighborhoodAndWeakWordTest(unittest.TestCase):
         for name in ["Providence Park Baptist Church", "Ginter Park United Methodist Church Tr",
                      "University Of Richmond Treasurer Of The", "Mcshin Foundation",
                      "Richmond Redevelopment And Housing Authority", "Hands Up Ministries",
-                     "Mount Olive Church Inc"]:
+                     "Mount Olive Church Inc", "Virginia Commonwealth Univ Academic Division"]:
             self.assertEqual(self.cat(name), PUBLIC_NONPROFIT, name)
 
 

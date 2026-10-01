@@ -38,7 +38,7 @@ PUBLIC_NONPROFIT_RX = _rx([
     r"FREDDIE MAC", r"VETERANS AFFAIRS",
     r"COUNTY OF \w+", r"\w+ COUNTY", r"HOUSING AUTHORITY",
     r"REDEVELOPMENT (?:AND|&) HOUSING", r"RRHA", r"SCHOOL BOARD",
-    r"PUBLIC SCHOOLS", r"UNIVERSITY", r"COLLEGE", r"VCU", r"RECTOR (?:AND|&) VISITORS",
+    r"PUBLIC SCHOOLS", r"UNIVERSITY", r"UNIV", r"COLLEGE", r"VCU", r"RECTOR (?:AND|&) VISITORS",
     r"VIRGINIA HOUSING", r"VHDA", r"LAND BANK",
     r"COMMUNITY LAND", r"HABITAT FOR HUMANITY", r"CHURCH", r"CHURCHES",
     r"MINISTRY", r"MINISTRIES", r"BAPTIST", r"METHODIST", r"EPISCOPAL",
@@ -83,7 +83,7 @@ PERSONAL_HOLDING_RX = _rx([
 
 
 # "C/O <agent>" and "ATTN <person>" name who receives the bill, not the owner.
-CARE_OF_RX = re.compile(r"\s*(?:\bC\s*/\s*O\b|\bC O\b|\bCARE OF\b|\bATTN\b).*$")
+CARE_OF_RX = re.compile(r"\s*(?:\bC\s*/\s*O\b|\s/\s*CO\b|\bC O\b|\bCARE OF\b|\bATTN\b).*$")
 
 # Richmond neighborhood names that contain non-profit words.
 NEIGHBORHOOD_RX = re.compile(
@@ -92,7 +92,7 @@ NEIGHBORHOOD_RX = re.compile(
 
 # Non-profit words that a private company can also carry in its name. With a
 # strong business marker (LLC, LP, REALTY, ...) they don't make it non-profit.
-WEAK_NONPROFIT = {"UNIVERSITY", "COLLEGE", "CHURCH", "CHURCHES", "FOUNDATION",
+WEAK_NONPROFIT = {"UNIVERSITY", "UNIV", "COLLEGE", "CHURCH", "CHURCHES", "FOUNDATION",
                   "LAND BANK", "COMMUNITY LAND", "CONGREGATION"}
 STRONG_COMPANY_RX = _rx([
     r"L L C", r"LLC", r"L L P", r"LLP", r"LP", r"PLLC", r"LTD", r"REALTY",
@@ -111,6 +111,12 @@ COMMUNITY_LAND_TRUST_RX = re.compile(r"\bCOMMUNITY LAND\b")
 def strip_care_of(name):
     """Drop a trailing "C/O ..." or "ATTN ..." agent from an owner name."""
     return CARE_OF_RX.sub("", (name or "").upper()).strip()
+
+
+def display_name(name):
+    """Owner name as published, minus any trailing "C/O ..." agent."""
+    m = CARE_OF_RX.search((name or "").upper())
+    return (name[:m.start()] if m else name or "").strip()
 
 
 def owner_key(name):

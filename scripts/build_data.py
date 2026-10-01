@@ -21,6 +21,7 @@ import urllib.parse
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(__file__))
+from summary import build_summary  # noqa: E402
 from classify import (CATEGORIES, COMPANY, classify, normalize_street, owner_key, same_address,
                       same_house_number)  # noqa: E402
 
@@ -249,6 +250,7 @@ def main():
     samples = collections.defaultdict(list)
     kept = skipped = 0
     facets = {k: [] for k in ("c", "v", "u", "w", "x", "y")}
+    records = []  # one small dict per lot for summary.json
 
     nd_path = os.path.join(args.out, "parcels.ndjson")
     with open(nd_path, "w") as nd:
@@ -304,6 +306,13 @@ def main():
             facets["w"].append(props["w"])
             facets["x"].append(round((cx - FACET_ORIGIN[0]) * 1e5))
             facets["y"].append(round((cy - FACET_ORIGIN[1]) * 1e5))
+            records.append({
+                "key": owner_key(owner), "name": owner, "c": props["c"], "w": props["w"],
+                "v": p.get(f_value) if f_value else None, "mail": mail_line,
+                "city": str(p.get(f_mcity) or "").strip() if f_mcity else "",
+                "state": str(p.get(f_mstate) or "").strip() if f_mstate else "",
+                "id": props["id"], "a": addr, "lu": lu, "x": cx, "y": cy,
+            })
             if f_value and p.get(f_value) is not None:
                 props["v"] = p.get(f_value)
             if f_year and p.get(f_year):
@@ -327,22 +336,30 @@ def main():
         for owner, addr, mail, reason in rnd.sample(samples[c], min(15, len(samples[c]))):
             print(f"  {owner[:40]:<40} | {addr[:28]:<28} | {mail[:28]:<28} | {reason}")
 
-    # Tag the largest company owners' lots (k = rank) so the map can outline them.
+    generated = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    summary, featured = build_summary(records, CATEGORIES, generated)
+
+    # Tag lots so the map can outline an owner: k = rank among the largest
+    # company owners (map panel), g = owner id from summary.json (summary page).
     top = {n: i + 1 for i, (n, _) in enumerate(company_owners.most_common(25))}
     tmp = nd_path + ".tmp"
     with open(nd_path) as src, open(tmp, "w") as dst:
         for line in src:
             f = json.loads(line)
-            if f["properties"]["c"] == CATEGORIES.index(COMPANY):
-                k = top.get(owner_key(f["properties"]["o"]))
-                if k:
-                    f["properties"]["k"] = k
-                    line = json.dumps(f) + "\n"
+            key = owner_key(f["properties"]["o"])
+            k = top.get(key) if f["properties"]["c"] == CATEGORIES.index(COMPANY) else None
+            g = featured.get(key)
+            if k:
+                f["properties"]["k"] = k
+            if g:
+                f["properties"]["g"] = g
+            if k or g:
+                line = json.dumps(f) + "\n"
             dst.write(line)
     os.replace(tmp, nd_path)
 
     stats = {
-        "generated": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d"),
+        "generated": generated,
         "source": LAYER_URL,
         "total": kept,
         "categories": {c: by_cat[c] for c in CATEGORIES},
@@ -356,6 +373,18 @@ def main():
     print("Land use index:", dict(collections.Counter(facets["u"])))
     with open(os.path.join(args.out, "stats.json"), "w") as f:
         json.dump(stats, f, indent=1)
+    with open(os.path.join(args.out, "summary.json"), "w") as f:
+        json.dump(summary, f, separators=(",", ":"))
+    print("\nTop owners by lots:")
+    for r in summary["owners"]["lots"]["all"][:15]:
+        print(f"  {r['lots']:>5}  ${r['value']:>13,}  {CATEGORIES[r['c']]:<20} {r['name']}")
+    print("\nTop owners by assessed value:")
+    for r in summary["owners"]["value"]["all"][:15]:
+        print(f"  {r['lots']:>5}  ${r['value']:>13,}  {CATEGORIES[r['c']]:<20} {r['name']}")
+    print("\nShared mailing addresses:")
+    for m in summary["mail_groups"][:10]:
+        print(f"  {m['lots']:>5} lots  {m['owners']:>3} names  {m['mail'][:45]:<45} {', '.join(m['names'][:2])[:60]}")
+    print("\nOut-of-state owners by state:", [(s['state'], s['lots']) for s in summary["states"][:10]])
     print("\nTop company owners:")
     for row in stats["top_company_owners"]:
         print(f"  {row['parcels']:>5}  {row['name']}")
