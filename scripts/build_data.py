@@ -27,6 +27,7 @@ LAYER_URL = os.environ.get(
     "PARCELS_LAYER_URL",
     "https://services1.arcgis.com/k3vhq11XkBNeeOfM/ArcGIS/rest/services/Parcels/FeatureServer/0",
 )
+QUERY_URL = LAYER_URL + "/query"
 
 # Land-use descriptions that count as residential. Matched case-insensitively
 # against the layer's land-use field.
@@ -81,11 +82,11 @@ def describe_layer():
 
 
 def fetch_features(out_fields, page_size, oid_field):
-    count = get_json(LAYER_URL, {"f": "json", "where": "1=1", "returnCountOnly": "true"})["count"]
+    count = get_json(QUERY_URL, {"f": "json", "where": "1=1", "returnCountOnly": "true"})["count"]
     print(f"Downloading {count} parcels in pages of {page_size} ...", flush=True)
     offset = 0
     while offset < count:
-        data = get_json(LAYER_URL, {
+        data = get_json(QUERY_URL, {
             "f": "geojson",
             "where": "1=1",
             "outFields": ",".join(out_fields),
@@ -138,7 +139,7 @@ def main():
     if not (f_owner and f_mail and f_addr):
         sys.exit("Could not find owner / mailing address / property address fields; see field list above.")
 
-    sample = get_json(LAYER_URL, {"f": "json", "where": "1=1", "outFields": "*",
+    sample = get_json(QUERY_URL, {"f": "json", "where": "1=1", "outFields": "*",
                                   "returnGeometry": "false", "resultRecordCount": 8})
     print("Sample records:")
     for feat in sample.get("features", []):
