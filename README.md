@@ -7,7 +7,7 @@ An interactive map of every residential lot in Richmond, colored by who owns it:
 | 🟩 Green | Owner-occupied | Individual (or family trust / estate) whose tax bill is mailed to the property |
 | 🟨 Amber | Individual landlord | Individual whose tax bill is mailed somewhere else |
 | 🟥 Red | Company-owned | LLC, corporation, partnership, bank, investor |
-| ⬜ Gray | Public / non-profit | Government, housing authority, church, land trust, university |
+| ⬜ Gray | Public / non-profit | Government, housing authority, church, community land trust, university |
 
 Tap any lot to see the owner, mailing address, and why it got its color. The panel
 shows the mix for whatever is on screen and lists the largest company owners
@@ -17,11 +17,17 @@ shows the mix for whatever is on screen and lists the largest company owners
 
 - **Data:** the City of Richmond GeoHub *Parcels* layer, which joins parcel shapes to the
   City Assessor's ownership records.
+- **Property addresses:** the Parcels layer only has the house number, so street
+  addresses come from the city's *All_Address_Parcel_Asr_View* and
+  *Addresses_Single_PIN* tables, joined by PIN (about 99% of residential parcels).
+  For the rest, a lot counts as owner-occupied when the mailing address has the same
+  house number, is in Richmond, and is not a PO box.
 - `scripts/build_data.py` downloads the parcels, keeps residential land uses, and
   classifies each owner with the rules in `scripts/classify.py`.
 - `scripts/build_tiles.sh` turns the result into a single vector-tile file
   (`parcels.pmtiles`) with [tippecanoe](https://github.com/felt/tippecanoe).
-- `site/index.html` is a static [MapLibre](https://maplibre.org/) page that reads it.
+- `site/index.html` is a static [MapLibre](https://maplibre.org/) page that reads it,
+  over an [OpenFreeMap](https://openfreemap.org/) basemap (free, no API key).
 - `.github/workflows/build-map.yml` runs all of this on GitHub Actions and publishes to
   GitHub Pages: on every push to `main`, and monthly to pick up new ownership records.
 
@@ -29,5 +35,6 @@ shows the mix for whatever is on screen and lists the largest company owners
 
 Owner type is inferred from names and mailing addresses, so it is an estimate:
 landlords who receive tax bills at the rental show as owner-occupied, and a few
-unusual names may be misread. Run `python -m unittest discover -s tests` after
+unusual names may be misread. Private "<address> Land Trust" holdings count as
+companies; only community land trusts count as non-profits. Run `python -m unittest discover -s tests` after
 changing the rules.

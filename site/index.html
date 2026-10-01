@@ -146,7 +146,10 @@ function flash(text, ms = 2500) {
 // ---- map --------------------------------------------------------------
 const protocol = new pmtiles.Protocol();
 maplibregl.addProtocol("pmtiles", protocol.tile);
-const carto = layer => ["a", "b", "c", "d"].map(s => `https://${s}.basemaps.cartocdn.com/${layer}/{z}/{x}/{y}@2x.png`);
+// Basemap: OpenFreeMap's Positron style (free, no API key). Parcels go
+// underneath its labels so street names stay readable.
+const BASEMAP = "https://tiles.openfreemap.org/styles/positron";
+let labelsBelow;  // first label layer; parcel layers are inserted before it
 
 const map = new maplibregl.Map({
   container: "map",
@@ -157,35 +160,29 @@ const map = new maplibregl.Map({
   maxBounds: [[-77.75, 37.35], [-77.15, 37.75]],
   hash: true,
   attributionControl: { compact: true },
-  style: {
-    version: 8,
-    sources: {
-      base: { type: "raster", tiles: carto("light_nolabels"), tileSize: 256, maxzoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>' },
-      labels: { type: "raster", tiles: carto("light_only_labels"), tileSize: 256, maxzoom: 19 },
-      parcels: { type: "vector", url: "pmtiles://" + new URL("data/parcels.pmtiles", location.href).href,
-        attribution: 'Parcels: <a href="https://richmond-geo-hub-cor.hub.arcgis.com/">City of Richmond</a>' },
-    },
-    layers: [
-      { id: "base", type: "raster", source: "base" },
-      { id: "parcels-fill", type: "fill", source: "parcels", "source-layer": "parcels",
-        paint: {
-          "fill-color": ["match", ["get", "c"], 0, CATS[0].hex, 1, CATS[1].hex, 2, CATS[2].hex, CATS[3].hex],
-          "fill-opacity": ["interpolate", ["linear"], ["zoom"], 11, 0.8, 16, 0.6],
-        } },
-      { id: "parcels-line", type: "line", source: "parcels", "source-layer": "parcels", minzoom: 14.5,
-        paint: { "line-color": "#ffffff", "line-width": ["interpolate", ["linear"], ["zoom"], 14.5, 0.3, 18, 1.5] } },
-      { id: "parcels-selected", type: "line", source: "parcels", "source-layer": "parcels",
-        filter: ["==", ["get", "id"], ""], paint: { "line-color": "#111", "line-width": 2.5 } },
-      { id: "labels", type: "raster", source: "labels" },
-    ],
-  },
+  style: BASEMAP,
+});
+map.once("style.load", () => {
+  labelsBelow = map.getStyle().layers.find(l => l.type === "symbol")?.id;
+  map.addSource("parcels", { type: "vector", url: "pmtiles://" + new URL("data/parcels.pmtiles", location.href).href,
+    attribution: 'Parcels: <a href="https://richmond-geo-hub-cor.hub.arcgis.com/">City of Richmond</a>' });
+  map.addLayer({ id: "parcels-fill", type: "fill", source: "parcels", "source-layer": "parcels",
+    paint: {
+      "fill-color": ["match", ["get", "c"], 0, CATS[0].hex, 1, CATS[1].hex, 2, CATS[2].hex, CATS[3].hex],
+      "fill-opacity": ["interpolate", ["linear"], ["zoom"], 11, 0.8, 16, 0.6],
+    } }, labelsBelow);
+  map.addLayer({ id: "parcels-line", type: "line", source: "parcels", "source-layer": "parcels", minzoom: 14.5,
+    paint: { "line-color": "#ffffff", "line-width": ["interpolate", ["linear"], ["zoom"], 14.5, 0.3, 18, 1.5] } }, labelsBelow);
+  map.addLayer({ id: "parcels-selected", type: "line", source: "parcels", "source-layer": "parcels",
+    filter: ["==", ["get", "id"], ""], paint: { "line-color": "#111", "line-width": 2.5 } }, labelsBelow);
+  if (active.size < CATS.length) applyFilter();
 });
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
 map.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true } }), "bottom-right");
 map.addControl(new maplibregl.ScaleControl({ unit: "imperial" }), "bottom-left");
 
 function applyFilter() {
+  if (!map.getLayer("parcels-fill")) return;
   const f = ["in", ["get", "c"], ["literal", [...active]]];
   map.setFilter("parcels-fill", f);
   map.setFilter("parcels-line", f);
@@ -221,7 +218,7 @@ fetch("data/stats.json").then(r => r.json()).then(s => {
 
 // Click a top owner to highlight all their lots.
 document.getElementById("owners").addEventListener("click", e => {
-  const li = e.target.closest("li"); if (!li) return;
+  const li = e.target.closest("li"); if (!li || !map.getSource("parcels")) return;
   const rank = +li.dataset.rank, name = li.textContent.split(" — ")[0];
   const on = map.getLayer("owner-hl") && li.classList.contains("hl");
   document.querySelectorAll("#owners li").forEach(x => x.classList.remove("hl"));
@@ -230,7 +227,7 @@ document.getElementById("owners").addEventListener("click", e => {
   li.classList.add("hl");
   map.addLayer({ id: "owner-hl", type: "line", source: "parcels", "source-layer": "parcels",
     filter: ["==", ["get", "k"], rank],
-    paint: { "line-color": "#111", "line-width": ["interpolate", ["linear"], ["zoom"], 11, 1.5, 16, 3] } }, "labels");
+    paint: { "line-color": "#111", "line-width": ["interpolate", ["linear"], ["zoom"], 11, 1.5, 16, 3] } }, labelsBelow);
   flash(`Outlined: ${name}. Tap again to clear.`);
 });
 

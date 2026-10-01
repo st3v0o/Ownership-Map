@@ -12,6 +12,6 @@ tippecanoe -q -P -o "$TMP/low.pmtiles" -l parcels -Z11 -z13 \
   -y c -y id -y k --no-tile-size-limit --no-feature-limit --simplification=4 "$IN"
 tippecanoe -q -P -o "$TMP/high.pmtiles" -l parcels -Z14 -z16 \
   --no-tile-size-limit --no-feature-limit "$IN"
-tile-join -q -f -o "$OUT" --no-tile-size-limit "$TMP/low.pmtiles" "$TMP/high.pmtiles"
+tile-join -q -f -n "Richmond residential parcels" -o "$OUT" --no-tile-size-limit "$TMP/low.pmtiles" "$TMP/high.pmtiles"
 rm -rf "$TMP"
 ls -lh "$OUT"

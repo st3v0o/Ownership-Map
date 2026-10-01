@@ -21,13 +21,22 @@ import urllib.parse
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(__file__))
-from classify import CATEGORIES, COMPANY, classify, normalize_name  # noqa: E402
+from classify import CATEGORIES, COMPANY, classify, normalize_street, owner_key, same_address  # noqa: E402
 
 LAYER_URL = os.environ.get(
     "PARCELS_LAYER_URL",
     "https://services1.arcgis.com/k3vhq11XkBNeeOfM/ArcGIS/rest/services/Parcels/FeatureServer/0",
 )
 QUERY_URL = LAYER_URL + "/query"
+
+# The parcel layer only carries the property's house number, so street
+# addresses come from the city's address tables, joined by PIN.
+_SERVICES = "https://services1.arcgis.com/k3vhq11XkBNeeOfM/ArcGIS/rest/services/"
+ADDRESS_SOURCES = [
+    # (query URL, PIN field, address field, object-id field)
+    (_SERVICES + "All_Address_Parcel_Asr_View/FeatureServer/3/query", "PIN", "AddressLabelWithUnit", "OBJECTID"),
+    (_SERVICES + "Addresses_Single_PIN/FeatureServer/0/query", "PIN", "AddressLabel", "ESRI_OID"),
+]
 
 # Land-use descriptions that count as residential. Matched case-insensitively
 # against the layer's land-use field.
@@ -104,6 +113,60 @@ def fetch_features(out_fields, page_size, oid_field):
         print(f"  {offset}/{count}", flush=True)
 
 
+def fetch_addresses():
+    """Return {PIN: [street address, ...]} from every address source."""
+    by_pin = collections.defaultdict(list)
+    for url, f_pin, f_addr, oid in ADDRESS_SOURCES:
+        n = offset = 0
+        try:
+            while True:
+                data = get_json(url, {
+                    "f": "json", "where": "1=1", "outFields": f"{f_pin},{f_addr}",
+                    "returnGeometry": "false", "orderByFields": oid,
+                    "resultOffset": offset, "resultRecordCount": 2000,
+                })
+                feats = data.get("features", [])
+                if not feats:
+                    break
+                for feat in feats:
+                    a = feat["attributes"]
+                    pin, addr = (a.get(f_pin) or "").strip(), re.sub(r"\s+", " ", a.get(f_addr) or "").strip()
+                    if pin and addr and addr not in by_pin[pin]:
+                        by_pin[pin].append(addr)
+                        n += 1
+                offset += len(feats)
+        except Exception as e:  # noqa: BLE001
+            print(f"  address source failed, continuing without it: {url}: {e}", flush=True)
+        print(f"Addresses from {url.split('/services/')[1]}: {n}", flush=True)
+    return by_pin
+
+
+def property_addresses(candidates, bldg_no):
+    """Street addresses for one parcel, best first: those whose house number
+    matches the assessor's, without unit numbers, deduplicated."""
+    b = (bldg_no or "").strip().upper()
+    match = [a for a in candidates if b and a.upper().split(" ")[0] == b.split(" ")[0]]
+    seen, out = set(), []
+    for a in sorted(match, key=len):
+        key = normalize_street(a)
+        if key not in seen:
+            seen.add(key)
+            out.append(a)
+    return out
+
+
+def display_address(addrs, mail_line):
+    """The parcel's address for the popup: the one tax bills go to when it is
+    one of them, else the first; extra addresses are summarised."""
+    if not addrs:
+        return ""
+    main = next((a for a in addrs if same_address(a, mail_line)), addrs[0])
+    rest = [a for a in addrs if a != main]
+    if len(rest) == 1:
+        return f"{main} / {rest[0]}"
+    return f"{main} (+{len(rest)} more)" if rest else main
+
+
 def full_mail(props, mail_fields):
     parts = [str(props.get(f) or "").strip() for f in mail_fields if f]
     return ", ".join(p for p in parts if p)
@@ -127,6 +190,7 @@ def main():
     f_mstate = pick_field(fields, ["MailState"], must=("MAIL", "STATE"))
     f_mzip = pick_field(fields, ["MailZip", "MailZipCode"], must=("MAIL", "ZIP"))
     f_addr = pick_field(fields, ["AsrLocationBldgNo", "AddressLabel", "SiteAddress", "PropertyAddress", "LocationAddress", "Address", "FullAddress"], must=("ADDR",), avoid=("MAIL", "OWN"))
+    f_pin = pick_field(fields, ["PIN", "GPIN"])
     f_lu = pick_field(fields, ["LandUse", "LandUseDesc", "LandUseDescription", "LUC", "PropertyClass"], must=("LAND", "USE"))
     f_id = pick_field(fields, ["ParcelID", "PIN", "Parcel_ID", "GPIN"], must=("PARCEL",)) or oid
     f_value = pick_field(fields, ["TotalValue", "TotalAssessment", "AssessedValue"], must=("TOTAL", "VAL"))
@@ -134,7 +198,7 @@ def main():
 
     picked = dict(id=f_id, owner=f_owner, owner2=f_owner2, mail=f_mail, mail2=f_mail2,
                   mail_city=f_mcity, mail_state=f_mstate, mail_zip=f_mzip,
-                  address=f_addr, land_use=f_lu, value=f_value, year=f_year)
+                  address=f_addr, pin=f_pin, land_use=f_lu, value=f_value, year=f_year)
     print("Field mapping:", json.dumps(picked, indent=2))
     if not (f_owner and f_mail and f_addr):
         sys.exit("Could not find owner / mailing address / property address fields; see field list above.")
@@ -144,6 +208,9 @@ def main():
     print("Sample records:")
     for feat in sample.get("features", []):
         print(" ", json.dumps(feat["attributes"])[:600])
+
+    addresses = fetch_addresses() if f_pin else {}
+    joined = fallback = 0
 
     out_fields = sorted({oid, *[v for v in picked.values() if v]})
     page = min(int(meta.get("maxRecordCount") or 1000), 2000)
@@ -169,17 +236,23 @@ def main():
 
             owner = " ".join(str(p.get(f) or "").strip() for f in (f_owner, f_owner2) if f).strip()
             mail_line = str(p.get(f_mail) or "").strip()
-            addr = str(p.get(f_addr) or "").strip()
-            cat, reason = classify(owner, addr, mail_line)
+            bldg = str(p.get(f_addr) or "").strip()
+            mail_city = str(p.get(f_mcity) or "") if f_mcity else None
+            addrs = property_addresses(addresses.get(str(p.get(f_pin) or "").strip(), []), bldg)
+            if addrs:
+                joined += 1
+            else:
+                fallback += 1
+            cat, reason = classify(owner, addrs, mail_line, bldg, mail_city)
             # A second mail line ("APT 2" / c/o) can hold the street; try it too.
             if f_mail2 and cat != COMPANY and reason.endswith("mailed elsewhere"):
-                alt = classify(owner, addr, str(p.get(f_mail2) or ""))
+                alt = classify(owner, addrs, str(p.get(f_mail2) or ""), bldg, mail_city)
                 if alt[0] != cat:
                     cat, reason = alt
-
+            addr = display_address(addrs, mail_line) or bldg
             by_cat[cat] += 1
             if cat == COMPANY:
-                company_owners[normalize_name(owner)] += 1
+                company_owners[owner_key(owner)] += 1
             if len(samples[cat]) < 400:
                 samples[cat].append((owner, addr, mail_line, reason))
 
@@ -200,6 +273,8 @@ def main():
             kept += 1
 
     print(f"\nKept {kept} residential parcels, skipped {skipped} non-residential.")
+    print(f"Street address joined for {joined} ({joined / max(kept, 1):.1%}); "
+          f"house-number fallback for {fallback}.")
     print("\nLand-use values (count, kept?):")
     for lu, n in land_uses.most_common(80):
         keep = bool(RESIDENTIAL_RX.search(lu)) and not NOT_RESIDENTIAL_RX.search(lu)
@@ -220,7 +295,7 @@ def main():
         for line in src:
             f = json.loads(line)
             if f["properties"]["c"] == CATEGORIES.index(COMPANY):
-                k = top.get(normalize_name(f["properties"]["o"]))
+                k = top.get(owner_key(f["properties"]["o"]))
                 if k:
                     f["properties"]["k"] = k
                     line = json.dumps(f) + "\n"

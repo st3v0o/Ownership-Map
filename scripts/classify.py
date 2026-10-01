@@ -12,6 +12,7 @@ City Assessor publishes. Each result carries a short human readable reason so
 the map can show *why* a lot got its colour.
 """
 
+import difflib
 import re
 
 OWNER_OCCUPIED = "owner_occupied"
@@ -38,7 +39,7 @@ PUBLIC_NONPROFIT_RX = _rx([
     r"COUNTY OF \w+", r"\w+ COUNTY", r"HOUSING AUTHORITY",
     r"REDEVELOPMENT (?:AND|&) HOUSING", r"RRHA", r"SCHOOL BOARD",
     r"PUBLIC SCHOOLS", r"UNIVERSITY", r"COLLEGE", r"VCU", r"RECTOR (?:AND|&) VISITORS",
-    r"VIRGINIA HOUSING", r"VHDA", r"LAND BANK", r"LAND TRUST",
+    r"VIRGINIA HOUSING", r"VHDA", r"LAND BANK",
     r"COMMUNITY LAND", r"HABITAT FOR HUMANITY", r"CHURCH", r"CHURCHES",
     r"MINISTRY", r"MINISTRIES", r"BAPTIST", r"METHODIST", r"EPISCOPAL",
     r"PRESBYTERIAN", r"CATHOLIC", r"DIOCESE", r"LUTHERAN",
@@ -79,6 +80,42 @@ PERSONAL_HOLDING_RX = _rx([
     r"ETUX", r"LIFE ESTATE", r"LIFE EST", r"EXECUTOR", r"EXECUTRIX",
     r"ADMINISTRATOR", r"GUARDIAN",
 ])
+
+
+# "C/O <agent>" and "ATTN <person>" name who receives the bill, not the owner.
+CARE_OF_RX = re.compile(r"\s*(?:\bC\s*/\s*O\b|\bC O\b|\bCARE OF\b|\bATTN\b).*$")
+
+# Richmond neighborhood names that contain non-profit words.
+NEIGHBORHOOD_RX = re.compile(
+    r"\b(?:CHURCH HILL|COLLEGE (?:PARK|HILL|HEIGHTS)|UNIVERSITY (?:HEIGHTS|PARK)|"
+    r"FOUNDATION (?:HILL|PARK))\b")
+
+# Non-profit words that a private company can also carry in its name. With a
+# strong business marker (LLC, LP, REALTY, ...) they don't make it non-profit.
+WEAK_NONPROFIT = {"UNIVERSITY", "COLLEGE", "CHURCH", "CHURCHES", "FOUNDATION",
+                  "LAND BANK", "COMMUNITY LAND", "CONGREGATION"}
+STRONG_COMPANY_RX = _rx([
+    r"L L C", r"LLC", r"L L P", r"LLP", r"LP", r"PLLC", r"LTD", r"REALTY",
+    r"VENTURES?", r"INVESTMENTS?", r"INVESTORS?", r"CAPITAL", r"PROPERTIES",
+    r"HOLDINGS?", r"RENTALS?", r"DEVELOPERS?", r"BUILDERS?",
+])
+
+# In Richmond, "<anything> LAND TRUST" is almost always a private holding
+# trust named after the property ("205 E 12TH ST LAND TRUST", "CRAFTON LAND
+# TRUST TRUSTEE") that keeps the investor anonymous. Only community land
+# trusts (Maggie Walker Community Land Trust) are non-profits.
+PRIVATE_LAND_TRUST_RX = re.compile(r"\bLAND TRUST\b")
+COMMUNITY_LAND_TRUST_RX = re.compile(r"\bCOMMUNITY LAND\b")
+
+
+def strip_care_of(name):
+    """Drop a trailing "C/O ..." or "ATTN ..." agent from an owner name."""
+    return CARE_OF_RX.sub("", (name or "").upper()).strip()
+
+
+def owner_key(name):
+    """Name used to group one owner's parcels (care-of agent removed)."""
+    return normalize_name(strip_care_of(name))
 
 
 def normalize_name(name):
@@ -131,18 +168,51 @@ def same_address(property_addr, mail_addr):
     dirs = {"N", "S", "E", "W"}
     pr = [w for w in pw[1:] if w not in dirs]
     mr = [w for w in mw[1:] if w not in dirs]
-    return bool(pr and mr and pr[0] == mr[0])
+    if not (pr and mr):
+        return False
+    # Allow small misspellings in the mailing address ("BOULDERS CREEK" for
+    # "BOULDER CREEK", "WAKFIELD" for "WAKEFIELD"), but not numbered streets.
+    a, b = pr[0], mr[0]
+    if a == b:
+        return True
+    if a[:1].isdigit() or b[:1].isdigit() or min(len(a), len(b)) < 5 or abs(len(a) - len(b)) > 1:
+        return False
+    return difflib.SequenceMatcher(None, a, b).ratio() >= 0.85
 
 
-def classify(owner_name, property_addr, mail_addr):
-    """Return (category, reason)."""
-    n = normalize_name(owner_name)
+PO_BOX_RX = re.compile(r"\b(?:P\s*O\s*BOX|POST OFFICE BOX|BOX|PMB)\b")
+
+
+def same_house_number(bldg_no, mail_addr, mail_city):
+    """Fallback when only the property's house number is known: the mailing
+    address starts with that number, is in Richmond and is not a PO box."""
+    m = normalize_street(mail_addr)
+    b = (bldg_no or "").strip().upper()
+    if not b or not m or PO_BOX_RX.search(m):
+        return False
+    if (mail_city or "").strip().upper() != "RICHMOND":
+        return False
+    return m.split()[0] == b.split()[0]
+
+
+def classify(owner_name, property_addr, mail_addr, bldg_no=None, mail_city=None):
+    """Return (category, reason).
+
+    property_addr is one street address or a list of them (a parcel can have
+    several). When none is known, bldg_no and mail_city drive a house-number
+    fallback for owner-occupied detection.
+    """
+    n = owner_key(owner_name)
     if not n:
         return INDIVIDUAL_LANDLORD, "No owner name on record"
 
-    m = PUBLIC_NONPROFIT_RX.search(n)
-    if m:
-        return PUBLIC_NONPROFIT, f'Government / non-profit owner ("{m.group(0)}")'
+    if PRIVATE_LAND_TRUST_RX.search(n) and not COMMUNITY_LAND_TRUST_RX.search(n):
+        return COMPANY, "Private land trust (owner kept anonymous)"
+
+    np_hits = {h.group(0) for h in PUBLIC_NONPROFIT_RX.finditer(NEIGHBORHOOD_RX.sub(" ", n))}
+    if np_hits and not (np_hits <= WEAK_NONPROFIT and STRONG_COMPANY_RX.search(n)):
+        m = sorted(np_hits, key=lambda h: (h in WEAK_NONPROFIT, h))[0]
+        return PUBLIC_NONPROFIT, f'Government / non-profit owner ("{m}")'
 
     personal = PERSONAL_HOLDING_RX.search(n)
     hits = [h.group(0) for h in COMPANY_RX.finditer(n)]
@@ -155,8 +225,12 @@ def classify(owner_name, property_addr, mail_addr):
         return COMPANY, f'Business owner ("{(legal or hits)[0]}" in name)'
 
     who = "Family trust / estate" if personal else "Individual owner"
-    if same_address(property_addr, mail_addr):
+    addrs = [property_addr] if isinstance(property_addr, str) else list(property_addr or [])
+    addrs = [a for a in addrs if (a or "").strip()]
+    if any(same_address(a, mail_addr) for a in addrs):
         return OWNER_OCCUPIED, f"{who}; tax bills mailed to this property"
+    if not addrs and same_house_number(bldg_no, mail_addr, mail_city):
+        return OWNER_OCCUPIED, f"{who}; tax bills mailed to this house number"
     if not (mail_addr or "").strip():
         return INDIVIDUAL_LANDLORD, f"{who}; no mailing address on record"
     return INDIVIDUAL_LANDLORD, f"{who}; tax bills mailed elsewhere"

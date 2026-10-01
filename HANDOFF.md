@@ -1,6 +1,6 @@
 # Handoff: Richmond ownership map
 
-Status as of 2026-10-01. Branch `claude/richmond-ownership-map`, PR #1.
+Status as of 2026-10-01 (second session). Branch `claude/richmond-ownership-map`, PR #1.
 
 ## Goal
 
@@ -56,23 +56,35 @@ LandUse counts:
 
 Sample record: `OwnerName "Johnson Jeremy", AsrLocationBldgNo "6915", MailAddress "6915 Longview Dr", MailCity "Richmond", MailZip "23225", PropertyClass "R One Story", LandUse "Single Family", MaskedOwner null`.
 
-## Problems to fix next
+## Fixed in the second session
 
-1. **Owner-occupied detection is broken (0% green).** `AsrLocationBldgNo` holds **only the house number**; this layer has no street name for the property. Options, best first:
-   - Get the property street address from another source, either a Richmond address-points layer (search the same ArcGIS org `k3vhq11XkBNeeOfM` for "Address") joined by ParcelID/PIN or spatially, or the City Assessor's free Public Data Set (rva.gov/assessor-real-estate/data-request), joined by PIN.
-   - Fallback heuristic: owner-occupied when the mailing house number equals `AsrLocationBldgNo`, `MailCity` is Richmond, and the mailing address is not a PO box. This is a reasonable approximation with few false positives.
-   - Also show the full property address in popups. Right now popups show only the house number.
-2. **Public/non-profit false positives.**
-   - "Church Hill Ventures Llc" is caught by `CHURCH` (Church Hill is a neighborhood).
-   - "Dobrin College Park Llc" is caught by `COLLEGE`.
-   - "Up Randolph Llc C/o University Property..." is caught by `UNIVERSITY` in the care-of agent.
+Richmond's servers were reachable from the Mac, so the build ran locally (full output matched Actions).
 
-   Fixes: strip everything from `C/O` onward before classifying; don't let neighborhood names (Church Hill, College Park, University Heights) count as non-profit; when the name has an LLC/INC and the only non-profit hit is a weak word, call it a company.
-3. **Private "land trusts"** ("205 E 12th St Land Trust Trustees", "Porter Street 3108 Land Trust Trustee") are anonymous investor vehicles, not community land trusts. Treat `<address> LAND TRUST` as a company. Keep named community land trusts (e.g., Maggie Walker Community Land Trust) as non-profit.
-4. **Top-owner grouping:** names like "AWE BROOKSIDE OWNER LLC C O WEST END CAPITAL GROUP LLC" should drop the `C/O` part. Consider also grouping by mailing address to catch one investor that uses many LLCs (optional).
-5. **Verify the tiles.** tile-join warned `mismatched maxzooms: 16 vs previous 13`. Check that the final `parcels.pmtiles` header says minzoom 11 / maxzoom 16; if it says 13, the map never loads detail tiles and popups break. The output is 15 MB. Test locally with a range-capable server (`npx http-server`; Python's http.server doesn't support Range requests).
-6. **`MaskedOwner`:** check what it holds (possibly owners who requested privacy) and handle it.
-7. Add unit tests for every rule change above, using the real names quoted here.
+1. **Owner-occupied detection.** Street addresses now come from `All_Address_Parcel_Asr_View/FeatureServer/3`
+   (`PIN`, `AddressLabelWithUnit`) plus `Addresses_Single_PIN/FeatureServer/0` (`PIN`, `AddressLabel`), joined by PIN
+   and kept only when the house number matches `AsrLocationBldgNo`. This joins **99.0%** of residential parcels.
+   The other 618 use the house-number fallback (same number, `MailCity` Richmond, not a PO box). Mailing-street typos
+   ("Boulders Creek", "Wakfield") still match. Popups show the full address, with "/ second address" or "(+N more)"
+   when a parcel has several.
+2. **C/O and ATTN agents** are stripped before classifying and before grouping top owners (`owner_key`).
+3. **Neighborhood names** (Church Hill, College Park/Hill/Heights, University Heights/Park) don't count as non-profit.
+   Weak non-profit words (church, college, university, foundation, ...) next to LLC/LP/Realty/Ventures/... mean company.
+4. **Land trusts:** any `LAND TRUST` except a *community* land trust is a private holding, so it counts as a company.
+   This catches number-less ones too, like "Crafton Land Trust Trustee".
+5. **Tiles verified:** the `parcels.pmtiles` header says minzoom 11 / maxzoom 16, and z14-16 carry every attribute.
+   The tile-join "mismatched maxzooms" warning is harmless.
+6. **`MaskedOwner`** is null on all 76,931 parcels, so there's nothing to handle.
+7. **Basemap:** CARTO raster tiles now return an "API KEY REQUIRED" watermark. The page uses OpenFreeMap's Positron
+   style instead (free, no key), with the parcel layers inserted under its labels on `style.load`.
+8. Unit tests cover every rule above (20 tests).
+
+Category split after the fixes (63,544 lots): owner-occupied ~65%, individual landlord ~17%, company ~17.5%,
+public/non-profit ~0.4%.
+
+## Ideas for later
+
+- Group one investor's many LLCs by mailing address for the "largest owners" list.
+- "Unit Owners Assoc" / condo associations own common areas; consider hiding them.
 
 ## Getting it live
 
@@ -82,4 +94,4 @@ Sample record: `OwnerName "Johnson Jeremy", AsrLocationBldgNo "6915", MailAddres
 
 ## Network hosts the session needs
 
-`services1.arcgis.com`, `*.arcgis.com`, `rva.gov`, `www.rva.gov` for data. For local browser testing, also `*.basemaps.cartocdn.com` and `nominatim.openstreetmap.org`. If these are still blocked, keep using the Actions-log loop: push, wait for the run, read the logs with the GitHub tools.
+`services1.arcgis.com`, `*.arcgis.com`, `rva.gov`, `www.rva.gov` for data. For local browser testing, also `tiles.openfreemap.org` and `nominatim.openstreetmap.org`. If these are still blocked, keep using the Actions-log loop: push, wait for the run, read the logs with the GitHub tools.
