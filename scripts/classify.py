@@ -124,6 +124,16 @@ def owner_key(name):
     return normalize_name(strip_care_of(name))
 
 
+def owner_group(name, category, mail_addr):
+    """Key for "all properties owned by this owner". Companies and public
+    bodies group by name; people also need the same mailing address, so two
+    different John Smiths are not merged."""
+    key = owner_key(name)
+    if key and category in (OWNER_OCCUPIED, INDIVIDUAL_LANDLORD):
+        return f"{key}|{normalize_street(mail_addr)}"
+    return key
+
+
 def normalize_name(name):
     s = (name or "").upper()
     s = s.replace("&", " AND ")

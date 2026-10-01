@@ -2,7 +2,7 @@
 shared mailing addresses and out-of-state owners.
 
 build_summary() takes one dict per residential lot:
-  key    owner grouping key (owner_key of the name)
+  key    owner grouping key (classify.owner_group)
   name   owner name as published
   c      category index (classify.CATEGORIES)
   v      assessed value in dollars, or None
@@ -66,13 +66,10 @@ def build_summary(records, categories, generated):
         for i in range(len(categories)):
             lists[sort_key][str(i)] = _top(owners, sort_key, i)
 
-    # Give every owner that appears in a list a small id (g) the map can outline.
-    featured = {}
-    for per_cat in lists.values():
-        for rows in per_cat.values():
-            for r in rows:
-                featured.setdefault(r["key"], len(featured) + 1)
-    slim = lambda r: {"g": featured[r["key"]], **{k: r[k] for k in ("name", "c", "lots", "value", "mail", "bbox")}}
+    # Give every owner an id (g) the map uses to outline all their lots;
+    # the largest owners get the smallest numbers.
+    ids = {r["key"]: i + 1 for i, r in enumerate(sorted(owners, key=lambda r: (-r["lots"], r["key"])))}
+    slim = lambda r: {"g": ids[r["key"]], **{k: r[k] for k in ("name", "c", "lots", "value", "mail", "bbox")}}
     lists = {s: {c: [slim(r) for r in rows] for c, rows in per_cat.items()} for s, per_cat in lists.items()}
 
     # Category totals.
@@ -140,4 +137,4 @@ def build_summary(records, categories, generated):
         "properties": properties,
         "mail_groups": mail_groups[:TOP_MAIL],
         "states": states,
-    }, featured
+    }, ids

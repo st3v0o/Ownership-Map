@@ -93,8 +93,10 @@ tiles now carry them too. Owner location (`w`): 0 at the property, 1 Richmond ma
 ## Summary page
 
 `site/summary.html` reads `site/data/summary.json` from `scripts/summary.py` (unit-tested in `tests/test_summary.py`).
-Owners are grouped by `owner_key` (C/O and ATTN agents dropped), and names are shown with `display_name`. Every owner in
-any top-100 list gets an id `g`, which is written to the tiles at all zooms. Map deep links: `?g=<id>&b=<w,s,e,n>&n=<name>`
+Owners are grouped by `classify.owner_group`: `owner_key` (C/O, /co and ATTN agents dropped) for companies and public
+bodies, and owner_key plus the normalized mailing street for people. Every owner gets an id `g`, with the largest owners
+getting the smallest numbers. It is written to the tiles at all zooms and to `facets.json` (column `g`), so the popup's
+"See all N properties" can find, fit and outline any owner's lots on the client. Map minZoom is 11, matching the tiles. Map deep links: `?g=<id>&b=<w,s,e,n>&n=<name>`
 outlines and zooms to an owner; `?pid=<parcel id>#17.5/lat/lon` selects a lot.
 
 ## Ideas for later
