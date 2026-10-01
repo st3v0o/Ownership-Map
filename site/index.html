@@ -224,6 +224,10 @@ const CATS = [
 ];
 const active = new Set(CATS.map((_, i) => i));
 const RICHMOND = { center: [-77.455, 37.545], zoom: 13 };
+// Set to the build id by the GitHub Actions workflow. Every data URL carries it, so a
+// browser never mixes cached files from two builds (owner ids change between builds).
+const DATA_VERSION = "dev";
+const dataUrl = f => `data/${f}?v=${DATA_VERSION}`;
 
 // Linked filters. Each chart counts lots with every *other* filter applied,
 // so you can see what a filter would add before you pick it.
@@ -260,7 +264,7 @@ const map = new maplibregl.Map({
   container: "map",
   center: RICHMOND.center,
   zoom: RICHMOND.zoom,
-  minZoom: 11,  // parcel tiles start at z11
+  minZoom: 10,  // parcel tiles start at z10
   maxZoom: 19,
   maxBounds: [[-77.75, 37.35], [-77.15, 37.75]],
   hash: true,
@@ -269,7 +273,7 @@ const map = new maplibregl.Map({
 });
 map.once("style.load", () => {
   labelsBelow = map.getStyle().layers.find(l => l.type === "symbol")?.id;
-  map.addSource("parcels", { type: "vector", url: "pmtiles://" + new URL("data/parcels.pmtiles", location.href).href,
+  map.addSource("parcels", { type: "vector", url: "pmtiles://" + new URL(dataUrl("parcels.pmtiles"), location.href).href,
     attribution: 'Parcels: <a href="https://richmond-geo-hub-cor.hub.arcgis.com/">City of Richmond</a>' });
   map.addLayer({ id: "parcels-fill", type: "fill", source: "parcels", "source-layer": "parcels",
     paint: {
@@ -360,7 +364,7 @@ function fitLots(idx) {
   }
   const phone = window.innerWidth <= 640;
   map.fitBounds([[ox + x0 / s, oy + y0 / s], [ox + x1 / s, oy + y1 / s]], { maxZoom: 17, duration: 900,
-    padding: phone ? { top: 70, bottom: 230, left: 30, right: 30 } : { top: 70, bottom: 50, left: 380, right: 60 } });
+    padding: phone ? { top: 58, bottom: 212, left: 8, right: 8 } : { top: 70, bottom: 50, left: 380, right: 60 } });
 }
 const ownerName = o => String(o || "").replace(/\s*(\bc\s*\/\s*o\b|\s\/\s*co\b|\battn\b).*$/i, "").trim();
 
@@ -380,7 +384,7 @@ CATS.forEach((c, i) => {
   legend.appendChild(li);
 });
 
-fetch("data/stats.json").then(r => r.json()).then(s => {
+fetch(dataUrl("stats.json")).then(r => r.json()).then(s => {
   document.getElementById("owners").innerHTML = s.top_company_owners
     .map(o => `<li data-rank="${o.rank}">${esc(o.name)} — <b>${fmt(o.parcels)}</b></li>`).join("");
   document.getElementById("note").insertAdjacentHTML("beforeend",
@@ -402,7 +406,7 @@ document.getElementById("owners").addEventListener("click", e => {
 // data/facets.json holds every lot's category, value ($1000s), land use,
 // owner location and centroid, so counts work at any zoom.
 let D = null, picked = null;
-fetch("data/facets.json").then(r => r.json()).then(d => {
+fetch(dataUrl("facets.json")).then(r => r.json()).then(d => {
   const n = d.c.length, bin = new Int8Array(n);
   for (let i = 0, b = 0; i < n; i++) {
     const v = d.v[i];
@@ -617,9 +621,13 @@ map.on("click", "parcels-fill", e => {
   popup.getElement().querySelector(".seeall")?.addEventListener("click", () => {
     const idx = lotsOf(g);
     popup.remove();
-    outline(["==", ["get", "g"], g], `${ownerName(p.o)} · ${fmt(idx.length)} properties`);
+    if (window.innerWidth <= 640) setCollapsed(true);  // before fitting, so the fit uses the small sheet
+    // Condo / townhouse units can share one parcel shape; say so, or a big owner
+    // "zooming in" to one complex looks wrong.
+    const shapes = new Set(idx.map(i => D.x[i] + "," + D.y[i])).size;
+    outline(["==", ["get", "g"], g], `${ownerName(p.o)} · ${fmt(idx.length)} properties` +
+      (shapes < idx.length ? ` on ${fmt(shapes)} lot${shapes > 1 ? "s" : ""}` : ""));
     fitLots(idx);
-    if (window.innerWidth <= 640) setCollapsed(true);
   });
 });
 map.on("mouseenter", "parcels-fill", () => map.getCanvas().style.cursor = "pointer");

@@ -96,7 +96,10 @@ tiles now carry them too. Owner location (`w`): 0 at the property, 1 Richmond ma
 Owners are grouped by `classify.owner_group`: `owner_key` (C/O, /co and ATTN agents dropped) for companies and public
 bodies, and owner_key plus the normalized mailing street for people. Every owner gets an id `g`, with the largest owners
 getting the smallest numbers. It is written to the tiles at all zooms and to `facets.json` (column `g`), so the popup's
-"See all N properties" can find, fit and outline any owner's lots on the client. Map minZoom is 11, matching the tiles. Map deep links: `?g=<id>&b=<w,s,e,n>&n=<name>`
+"See all N properties" can find, fit and outline any owner's lots on the client. Tiles start at z10 (map minZoom 10)
+so even owners spread across the whole city fit on a phone; z10-13 tiles keep tiny lots (`--no-tiny-polygon-reduction`).
+The workflow stamps `DATA_VERSION` (the run id) into the pages, and every data URL carries `?v=<id>`, so a browser never
+mixes cached files from two builds. Owner ids change between builds, and mixed caches outlined the wrong owners. Map deep links: `?g=<id>&b=<w,s,e,n>&n=<name>`
 outlines and zooms to an owner; `?pid=<parcel id>#17.5/lat/lon` selects a lot.
 
 ## Ideas for later
