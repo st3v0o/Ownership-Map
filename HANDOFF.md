@@ -90,6 +90,13 @@ in 1e-5 degrees), written by `build_data.py`. The map filter uses tile attribute
 tiles now carry them too. Owner location (`w`): 0 at the property, 1 Richmond mailing city, 2 elsewhere in VA,
 3 out of state, 4 no address. Note: "Richmond" mailing city includes Henrico/Chesterfield addresses.
 
+## Summary page
+
+`site/summary.html` reads `site/data/summary.json` from `scripts/summary.py` (unit-tested in `tests/test_summary.py`).
+Owners are grouped by `owner_key` (C/O and ATTN agents dropped), and names are shown with `display_name`. Every owner in
+any top-100 list gets an id `g`, which is written to the tiles at all zooms. Map deep links: `?g=<id>&b=<w,s,e,n>&n=<name>`
+outlines and zooms to an owner; `?pid=<parcel id>#17.5/lat/lon` selects a lot.
+
 ## Ideas for later
 
 - Keep filter state in the URL so filtered views can be shared.

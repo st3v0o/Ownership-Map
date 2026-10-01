@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Richmond Ownership Summary</title>
+<meta name="description" content="Key numbers on who owns Richmond, VA's homes: largest owners by lots and assessed value, most valuable properties, shared mailing addresses and out-of-state owners.">
+<style>
+  :root {
+    --owner: #1f9d55; --landlord: #e0a32e; --company: #d43d3d; --public: #7d8590;
+    --ink: #1b1f24; --muted: #5d6670; --line: #e3e6ea; --bg: #f6f6f3; --card: #fff; --link: #1d4ed8;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1080px; margin: 0 auto; padding: 20px 16px 48px; }
+  a { color: var(--link); }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+  h1 { font-size: 22px; margin: 0; }
+  .back { font-size: 14px; font-weight: 600; text-decoration: none; }
+  .meta { color: var(--muted); font-size: 12.5px; margin: 4px 0 18px; }
+
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+  .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .kpi .v { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .kpi .l { color: var(--muted); font-size: 12.5px; }
+
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-top: 16px; }
+  h2 { font-size: 16px; margin: 0 0 2px; }
+  .lede { color: var(--muted); font-size: 12.5px; margin: 0 0 12px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 10px; }
+  .controls label { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  select { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 7px; background: #fff; }
+  .seg { display: inline-flex; background: var(--line); border-radius: 8px; padding: 2px; }
+  .seg button { border: 0; background: none; font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 6px;
+    cursor: pointer; color: var(--muted); white-space: nowrap; }
+  .seg button.on { background: #fff; color: var(--ink); box-shadow: 0 1px 2px #0002; }
+
+  .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted);
+    font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.rank { color: var(--muted); width: 1%; }
+  td.small { color: var(--muted); font-size: 12px; }
+  .who { font-weight: 600; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+  .meter { height: 6px; background: var(--line); border-radius: 3px; margin-top: 4px; overflow: hidden; }
+  .meter span { display: block; height: 100%; border-radius: 3px; }
+  .maplink { white-space: nowrap; font-size: 12.5px; }
+  a.who { color: inherit; text-decoration: none; }
+  a.who:hover { text-decoration: underline; }
+
+  .stack { display: flex; height: 14px; border-radius: 4px; overflow: hidden; background: var(--line); }
+  .stack span { height: 100%; }
+  .split { display: grid; grid-template-columns: 90px 1fr; gap: 6px 10px; align-items: center; font-size: 12.5px;
+    margin: 10px 0 14px; color: var(--muted); }
+
+  .bars { display: grid; grid-template-columns: 44px 1fr 110px; gap: 4px 10px; align-items: center; font-size: 13px; }
+  .bars .b { height: 12px; background: var(--company); border-radius: 3px; min-width: 2px; }
+  .bars .n { color: var(--muted); }
+  .names { color: var(--muted); font-size: 12px; }
+  .empty { color: var(--muted); padding: 12px 0; }
+
+  @media (max-width: 640px) {
+    h1 { font-size: 19px; }
+    .hide-sm, td.go, th.go { display: none; }
+    a.who { color: var(--link); }
+    td, th { padding: 6px 5px; }
+    .bars { grid-template-columns: 40px 1fr 92px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Who owns Richmond's homes: summary</h1>
+    <a class="back" href="./">← Back to the map</a>
+  </header>
+  <p class="meta" id="meta">Loading…</p>
+
+  <div class="kpis" id="kpis"></div>
+
+  <section>
+    <h2>By owner type</h2>
+    <p class="lede">Share of residential lots and of their total assessed value.</p>
+    <div class="split" id="split"></div>
+    <div class="scroll"><table id="cats"></table></div>
+  </section>
+
+  <section>
+    <h2>Largest owners</h2>
+    <p class="lede">Owners grouped by name, ignoring "c/o" agents. One investor can still own lots under
+      several LLC names; see <a href="#mail">shared mailing addresses</a>. Tap an owner to outline their lots on the map.</p>
+    <div class="controls">
+      <div class="seg" id="sort">
+        <button data-v="lots" class="on">By number of lots</button><button data-v="value">By assessed value</button>
+      </div>
+      <label>Owner type <select id="cat">
+        <option value="all">All</option><option value="2">Company</option><option value="1">Individual landlord</option>
+        <option value="0">Owner-occupied</option><option value="3">Public / non-profit</option>
+      </select></label>
+      <label>Show <select id="n-owners"><option>10</option><option selected>25</option><option>50</option><option>100</option></select></label>
+    </div>
+    <div class="scroll"><table id="owners"></table></div>
+  </section>
+
+  <section>
+    <h2>Most valuable properties</h2>
+    <p class="lede">Individual residential lots by assessed value.</p>
+    <div class="controls">
+      <label>Show <select id="n-props"><option selected>10</option><option>25</option><option>50</option><option>100</option></select></label>
+    </div>
+    <div class="scroll"><table id="props"></table></div>
+  </section>
+
+  <section id="mail">
+    <h2>Shared mailing addresses</h2>
+    <p class="lede">Addresses that receive tax bills for lots under two or more owner names (excluding bills
+      mailed to the property itself). These are often one investor or property manager behind several LLCs.</p>
+    <div class="controls">
+      <label>Show <select id="n-mail"><option selected>10</option><option>25</option><option>50</option></select></label>
+    </div>
+    <div class="scroll"><table id="mailtbl"></table></div>
+  </section>
+
+  <section>
+    <h2>Out-of-state owners</h2>
+    <p class="lede" id="states-lede">Lots whose tax bill goes to another state.</p>
+    <div class="bars" id="states"></div>
+  </section>
+
+  <p class="meta" style="margin-top:18px">Source: City of Richmond Assessor parcel and ownership records. Owner type is
+    inferred from names and mailing addresses, so treat it as an estimate. <a href="./">Back to the map</a></p>
+</main>
+
+<script>
+const CATS = [
+  { label: "Owner-occupied", short: "Owner-occ.", color: "var(--owner)" },
+  { label: "Individual landlord", short: "Ind. landlord", color: "var(--landlord)" },
+  { label: "Company-owned", short: "Company", color: "var(--company)" },
+  { label: "Public / non-profit", short: "Public", color: "var(--public)" },
+];
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmt = n => Math.round(n).toLocaleString("en-US");
+const pct = (n, t) => t ? (100 * n / t).toFixed(n / t < .01 ? 1 : 0) + "%" : "–";
+const money = v => v >= 1e9 ? `$${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `$${(v / 1e6).toFixed(v >= 1e8 ? 0 : 1)}M`
+  : v >= 1e3 ? `$${Math.round(v / 1e3)}k` : `$${fmt(v)}`;
+const dollars = v => "$" + fmt(v);
+const dot = c => `<span class="dot" style="background:${CATS[c].color}" title="${CATS[c].label}"></span>`;
+const title = s => s.toLowerCase().replace(/\b([a-z])/g, m => m.toUpperCase()).replace(/\bLlc\b/g, "LLC")
+  .replace(/\bLp\b/g, "LP").replace(/\b(Nw|Ne|Sw|Se|Po)\b/g, m => m.toUpperCase())
+  .replace(/, ([a-z]{2})$/i, (_, st) => ", " + st.toUpperCase());
+
+// Links into the map: outline an owner (g), fit a bounding box (b), select a lot (pid).
+const mapLink = ({ g, b, n, pid, at }) => {
+  const q = new URLSearchParams();
+  if (g) q.set("g", g);
+  if (b) q.set("b", b.map(x => x.toFixed(5)).join(","));
+  if (n) q.set("n", n);
+  if (pid) q.set("pid", pid);
+  return `./?${q}${at ? `#17.5/${at[1].toFixed(5)}/${at[0].toFixed(5)}` : ""}`;
+};
+
+let S;
+const state = { sort: "lots", cat: "all", nOwners: 25, nProps: 10, nMail: 10 };
+
+fetch("data/summary.json").then(r => r.json()).then(s => { S = s; render(); })
+  .catch(() => document.getElementById("meta").textContent = "Summary data is not available yet.");
+
+function render() {
+  const s = S, cats = s.categories;
+  document.getElementById("meta").textContent =
+    `${fmt(s.total_lots)} residential lots (single family, duplex, multi-family) in the City of Richmond. Data pulled ${s.generated}.`;
+
+  const company = cats[2], oos = cats.reduce((a, c) => a + c.out_of_state, 0);
+  document.getElementById("kpis").innerHTML = [
+    [fmt(s.total_lots), "residential lots"],
+    [money(s.total_value), "total assessed value"],
+    [fmt(s.total_owners), "distinct owners"],
+    [pct(cats[0].lots, s.total_lots), "owner-occupied (tax bill to the home)"],
+    [pct(company.lots, s.total_lots), `company-owned · ${pct(company.value, s.total_value)} of value`],
+    [fmt(oos), "lots with out-of-state owners"],
+  ].map(([v, l]) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("");
+
+  const bar = key => `<div class="stack">${cats.map((c, i) =>
+    `<span style="width:${100 * c[key] / cats.reduce((a, x) => a + x[key], 0)}%;background:${CATS[i].color}" title="${CATS[i].label}"></span>`).join("")}</div>`;
+  document.getElementById("split").innerHTML = `<span>Lots</span>${bar("lots")}<span>Assessed value</span>${bar("value")}`;
+
+  document.getElementById("cats").innerHTML = `<tr><th>Owner type</th><th class="n">Lots</th><th class="n">Share</th>
+    <th class="n">Total value</th><th class="n hide-sm">Value share</th><th class="n hide-sm">Median value</th>
+    <th class="n hide-sm">Owners</th><th class="n hide-sm">Out of state</th></tr>` +
+    cats.map((c, i) => `<tr><td>${dot(i)}${CATS[i].label}</td><td class="n">${fmt(c.lots)}</td>
+      <td class="n">${pct(c.lots, s.total_lots)}</td><td class="n">${money(c.value)}</td>
+      <td class="n hide-sm">${pct(c.value, s.total_value)}</td><td class="n hide-sm">${money(c.median_value)}</td>
+      <td class="n hide-sm">${fmt(c.owners)}</td><td class="n hide-sm">${fmt(c.out_of_state)}</td></tr>`).join("");
+
+  renderOwners(); renderProps(); renderMail(); renderStates();
+}
+
+function renderOwners() {
+  const rows = S.owners[state.sort][state.cat].slice(0, state.nOwners);
+  const key = state.sort, max = Math.max(1, ...rows.map(r => r[key]));
+  document.getElementById("owners").innerHTML = rows.length ? `<tr><th>#</th><th>Owner</th>
+    <th class="n">Lots</th><th class="n">Total value</th><th class="n hide-sm">Avg / lot</th>
+    <th class="hide-sm">Tax bill mailed to</th><th class="go"></th></tr>` +
+    rows.map((r, i) => `<tr><td class="rank">${i + 1}</td>
+      <td><a class="who" href="${mapLink({ g: r.g, b: r.bbox, n: title(r.name) })}">${dot(r.c)}${esc(title(r.name))}</a>
+        <div class="meter"><span style="width:${100 * r[key] / max}%;background:${CATS[r.c].color}"></span></div></td>
+      <td class="n">${fmt(r.lots)}</td><td class="n">${money(r.value)}</td>
+      <td class="n hide-sm">${money(r.value / r.lots)}</td>
+      <td class="small hide-sm">${esc(title(r.mail))}</td>
+      <td class="go"><a class="maplink" href="${mapLink({ g: r.g, b: r.bbox, n: title(r.name) })}">Map →</a></td></tr>`).join("")
+    : `<tr><td class="empty">No owners in this group.</td></tr>`;
+}
+
+function renderProps() {
+  const rows = S.properties.slice(0, state.nProps);
+  document.getElementById("props").innerHTML = `<tr><th>#</th><th>Address</th><th class="hide-sm">Owner</th>
+    <th class="n">Assessed value</th><th class="hide-sm">Land use</th><th class="go"></th></tr>` +
+    rows.map((r, i) => `<tr><td class="rank">${i + 1}</td>
+      <td><a class="who" href="${mapLink({ pid: r.id, at: [r.x, r.y] })}">${dot(r.c)}${esc(r.a)}</a><div class="names">${esc(title(r.name))}</div></td>
+      <td class="small hide-sm">${CATS[r.c].label}</td><td class="n">${dollars(r.value)}</td>
+      <td class="small hide-sm">${esc(r.lu)}</td>
+      <td class="go"><a class="maplink" href="${mapLink({ pid: r.id, at: [r.x, r.y] })}">Map →</a></td></tr>`).join("");
+}
+
+function renderMail() {
+  const rows = S.mail_groups.slice(0, state.nMail);
+  document.getElementById("mailtbl").innerHTML = `<tr><th>#</th><th>Mailing address</th><th class="n">Lots</th>
+    <th class="n">Names</th><th class="n hide-sm">Total value</th><th class="go"></th></tr>` +
+    rows.map((m, i) => `<tr><td class="rank">${i + 1}</td>
+      <td><a class="who" href="${mapLink({ b: m.bbox, n: "Lots billed to " + title(m.mail) })}">${dot(m.c)}${esc(title(m.mail))}</a>
+        <div class="names">${m.names.map(n => esc(title(n))).join(" · ")}${m.owners > m.names.length ? ` · +${m.owners - m.names.length} more` : ""}</div></td>
+      <td class="n">${fmt(m.lots)}</td><td class="n">${fmt(m.owners)}</td><td class="n hide-sm">${money(m.value)}</td>
+      <td class="go"><a class="maplink" href="${mapLink({ b: m.bbox, n: "Lots billed to " + title(m.mail) })}">Map →</a></td></tr>`).join("");
+}
+
+function renderStates() {
+  const st = S.states.slice(0, 15), max = Math.max(1, ...st.map(s => s.lots));
+  const total = S.states.reduce((a, s) => a + s.lots, 0);
+  document.getElementById("states-lede").textContent =
+    `${fmt(total)} lots have a tax bill going to another state. Top ${st.length} states:`;
+  document.getElementById("states").innerHTML = st.map(s => `<span>${esc(s.state)}</span>
+    <div class="b" style="width:${100 * s.lots / max}%"></div>
+    <span class="n">${fmt(s.lots)} · ${money(s.value)}</span>`).join("");
+}
+
+document.getElementById("sort").onclick = e => {
+  const b = e.target.closest("button"); if (!b) return;
+  state.sort = b.dataset.v;
+  document.querySelectorAll("#sort button").forEach(x => x.classList.toggle("on", x === b));
+  renderOwners();
+};
+document.getElementById("cat").onchange = e => { state.cat = e.target.value; renderOwners(); };
+document.getElementById("n-owners").onchange = e => { state.nOwners = +e.target.value; renderOwners(); };
+document.getElementById("n-props").onchange = e => { state.nProps = +e.target.value; renderProps(); };
+document.getElementById("n-mail").onchange = e => { state.nMail = +e.target.value; renderMail(); };
+</script>
+</body>
+</html>

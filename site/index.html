@@ -90,6 +90,8 @@
   #more { display: none; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 8px;
     padding: 9px; border: 0; border-radius: 8px; background: var(--ink); color: #fff; font: inherit;
     font-size: 13.5px; font-weight: 600; cursor: pointer; }
+  .sub a, .summary-link { color: #1d4ed8; }
+  .summary-link { display: block; margin-top: 14px; font-size: 13px; font-weight: 600; }
   #reset { margin-top: 12px; width: 100%; padding: 7px; border: 1px solid var(--line); border-radius: 8px;
     background: #fff; font: inherit; font-size: 12.5px; cursor: pointer; display: none; }
   #reset.show { display: block; }
@@ -136,7 +138,8 @@
 <aside id="panel">
   <button class="toggle" id="toggle" aria-label="Show or hide details">▾</button>
   <h1>Who owns Richmond's homes?</h1>
-  <p class="sub">Every residential lot in the city, colored by owner type. Tap a lot for details.</p>
+  <p class="sub">Every residential lot in the city, colored by owner type. Tap a lot for details.
+    <a href="summary.html">Summary &amp; largest owners →</a></p>
 
   <ul class="legend" id="legend"></ul>
 
@@ -180,6 +183,8 @@
   </section>
 
   <button id="reset">Reset all filters</button>
+
+  <a class="summary-link" href="summary.html">Summary: largest owners, most valuable lots, out-of-state owners →</a>
 
   <details id="owners-box">
     <summary>Largest company owners</summary>
@@ -263,7 +268,26 @@ map.once("style.load", () => {
   map.addLayer({ id: "parcels-selected", type: "line", source: "parcels", "source-layer": "parcels",
     filter: ["==", ["get", "id"], ""], paint: { "line-color": "#111", "line-width": 2.5 } }, labelsBelow);
   applyFilter();
+  openDeepLink();
 });
+
+// Links from summary.html: ?g=<owner id>&n=<name>&b=<west,south,east,north> outlines an
+// owner's lots and zooms to them; ?pid=<parcel id> selects one lot.
+function openDeepLink() {
+  const q = new URLSearchParams(location.search);
+  const g = +q.get("g"), pid = q.get("pid"), b = (q.get("b") || "").split(",").map(Number), name = q.get("n");
+  if (g) map.addLayer({ id: "owner-hl", type: "line", source: "parcels", "source-layer": "parcels",
+    filter: ["==", ["get", "g"], g],
+    paint: { "line-color": "#111", "line-width": ["interpolate", ["linear"], ["zoom"], 11, 1.5, 16, 3] } }, labelsBelow);
+  if (pid) map.setFilter("parcels-selected", ["==", ["get", "id"], pid]);
+  if (b.length === 4 && b.every(Number.isFinite)) {
+    const phone = window.innerWidth <= 640;
+    map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { maxZoom: 17, duration: 0,
+      padding: phone ? { top: 40, bottom: 240, left: 30, right: 30 } : { top: 60, bottom: 60, left: 380, right: 60 } });
+  }
+  if (name) flash((g ? "Outlined: " : "") + name, 6000);
+  if (g || pid || name) history.replaceState(null, "", location.pathname + location.hash);
+}
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
 map.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true } }), "bottom-right");
 map.addControl(new maplibregl.ScaleControl({ unit: "imperial" }), "bottom-left");
