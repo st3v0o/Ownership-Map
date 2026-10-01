@@ -87,6 +87,9 @@
   .rows .lbl.picked::before { content: "▸ "; }
   .rows .stack { display: flex; height: 12px; border-radius: 3px; overflow: hidden; background: #0000000a; }
   .rows .num { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  #more { display: none; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 8px;
+    padding: 9px; border: 0; border-radius: 8px; background: var(--ink); color: #fff; font: inherit;
+    font-size: 13.5px; font-weight: 600; cursor: pointer; }
   #reset { margin-top: 12px; width: 100%; padding: 7px; border: 1px solid var(--line); border-radius: 8px;
     background: #fff; font: inherit; font-size: 12.5px; cursor: pointer; display: none; }
   #reset.show { display: block; }
@@ -115,12 +118,15 @@
   @media (max-width: 640px) {
     #panel { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 70%;
       border-radius: 14px 14px 0 0; padding: 12px 14px calc(12px + env(safe-area-inset-bottom)); }
-    #panel.collapsed { max-height: 196px; overflow: hidden; }
+    #panel.collapsed { max-height: 204px; overflow: hidden; }
     #panel.collapsed .sub, #panel.collapsed .legend small { display: none; }
     #panel.collapsed .legend li { padding: 3px 4px; }
+    #panel.collapsed form.search { display: none; }
+    #panel.collapsed #more { display: flex; }
+    #panel h1 { cursor: pointer; padding-right: 28px; }
     form.search { margin: 12px 0 0; }
     .toggle { display: block; }
-    .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left { bottom: 200px; }
+    .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left { bottom: 208px; }
   }
 </style>
 </head>
@@ -133,6 +139,8 @@
   <p class="sub">Every residential lot in the city, colored by owner type. Tap a lot for details.</p>
 
   <ul class="legend" id="legend"></ul>
+
+  <button id="more" type="button">Show charts, filters &amp; search ▴</button>
 
   <form class="search" id="search">
     <input id="q" type="search" placeholder="Search an address or neighborhood" autocomplete="off">
@@ -272,8 +280,10 @@ function mapFilter() {
   return f;
 }
 function applyFilter() {
-  document.getElementById("reset").classList.toggle("show",
-    active.size < CATS.length || valueFiltered() || F.where.size < WHERE.length || F.use.size < USES.length);
+  const nOn = (active.size < CATS.length) + valueFiltered() + (F.where.size < WHERE.length) + (F.use.size < USES.length);
+  document.getElementById("reset").classList.toggle("show", nOn > 0);
+  document.getElementById("more").textContent = nOn
+    ? `Charts & filters · ${nOn} active ▴` : "Show charts, filters & search ▴";
   updateView();
   if (!map.getLayer("parcels-fill")) return;
   const f = mapFilter();
@@ -556,6 +566,11 @@ document.getElementById("search").addEventListener("submit", async e => {
 const panel = document.getElementById("panel"), toggle = document.getElementById("toggle");
 function setCollapsed(c) { panel.classList.toggle("collapsed", c); toggle.textContent = c ? "▴" : "▾"; }
 toggle.onclick = () => setCollapsed(!panel.classList.contains("collapsed"));
+panel.querySelector("h1").onclick = () => window.innerWidth <= 640 && setCollapsed(!panel.classList.contains("collapsed"));
+document.getElementById("more").onclick = () => {
+  setCollapsed(false);
+  document.getElementById("scope").scrollIntoView({ behavior: "smooth", block: "start" });
+};
 if (window.innerWidth <= 640) setCollapsed(true);
 </script>
 </body>
