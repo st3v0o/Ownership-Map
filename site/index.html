@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Who Owns Richmond's Homes</title>
+<meta name="description" content="Residential parcels in Richmond, VA colored by owner type: owner-occupied, individual landlord, company, or public/non-profit.">
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<style>
+  :root {
+    --owner: #1f9d55;
+    --landlord: #e0a32e;
+    --company: #d43d3d;
+    --public: #7d8590;
+    --ink: #1b1f24;
+    --muted: #5d6670;
+    --panel: #ffffffee;
+    --line: #e3e6ea;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #f2f2ef; color: var(--ink);
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  #map { position: absolute; inset: 0; }
+
+  #panel { position: absolute; top: 12px; left: 12px; width: 320px; max-height: calc(100% - 24px);
+    overflow: auto; background: var(--panel); backdrop-filter: blur(6px); border-radius: 12px;
+    box-shadow: 0 4px 20px #0002; padding: 14px 16px; z-index: 2; }
+  h1 { font-size: 17px; margin: 0 0 2px; }
+  .sub { color: var(--muted); font-size: 12px; margin: 0 0 10px; }
+  .toggle { position: absolute; right: 10px; top: 10px; border: 0; background: none; font-size: 18px;
+    cursor: pointer; color: var(--muted); display: none; }
+
+  form.search { display: flex; gap: 6px; margin-top: 12px; }
+  form.search input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--line);
+    border-radius: 8px; font: inherit; }
+  form.search button { padding: 8px 12px; border: 0; border-radius: 8px; background: var(--ink);
+    color: #fff; font: inherit; cursor: pointer; }
+
+  .legend { list-style: none; margin: 0; padding: 0; }
+  .legend li { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-radius: 8px;
+    cursor: pointer; user-select: none; }
+  .legend li:hover { background: #0000000a; }
+  .legend li.off { opacity: .35; }
+  .sw { width: 16px; height: 16px; border-radius: 4px; flex: none; }
+  .legend .name { flex: 1; }
+  .legend .name small { display: block; color: var(--muted); font-size: 11.5px; }
+  .legend .pct { font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; min-width: 52px; }
+  .legend .pct small { display: block; font-weight: 400; color: var(--muted); font-size: 11px; }
+
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+    margin: 14px 0 6px; display: flex; justify-content: space-between; }
+  .bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--line); }
+  .bar span { height: 100%; transition: width .3s; }
+  .bar-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  details summary { cursor: pointer; font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--muted); margin-top: 14px; }
+  ol.owners { margin: 6px 0 0; padding-left: 22px; font-size: 12.5px; }
+  ol.owners li { margin: 2px 0; cursor: pointer; }
+  ol.owners li:hover { text-decoration: underline; }
+  ol.owners li b { font-variant-numeric: tabular-nums; }
+  .note { font-size: 11.5px; color: var(--muted); margin-top: 12px; }
+  .note a { color: inherit; }
+
+  .maplibregl-popup-content { border-radius: 10px; padding: 12px 14px; font-size: 13px; max-width: 290px; }
+  .pop .addr { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+  .chip { display: inline-block; padding: 2px 8px; border-radius: 999px; color: #fff; font-size: 12px;
+    font-weight: 600; margin-bottom: 6px; }
+  .pop .why { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .pop dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 12.5px; }
+  .pop dt { color: var(--muted); }
+  .pop dd { margin: 0; word-break: break-word; }
+
+  #msg { position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--ink);
+    color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 13px; z-index: 3; display: none; }
+
+  @media (max-width: 640px) {
+    #panel { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 55%;
+      border-radius: 14px 14px 0 0; padding: 12px 14px calc(12px + env(safe-area-inset-bottom)); }
+    #panel.collapsed { max-height: 196px; overflow: hidden; }
+    #panel.collapsed .sub, #panel.collapsed .legend small { display: none; }
+    #panel.collapsed .legend li { padding: 3px 4px; }
+    form.search { margin: 12px 0 0; }
+    .toggle { display: block; }
+    .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left { bottom: 200px; }
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<aside id="panel">
+  <button class="toggle" id="toggle" aria-label="Show or hide details">▾</button>
+  <h1>Who owns Richmond's homes?</h1>
+  <p class="sub">Every residential lot in the city, colored by owner type. Tap a lot for details.</p>
+
+  <ul class="legend" id="legend"></ul>
+
+  <form class="search" id="search">
+    <input id="q" type="search" placeholder="Search an address or neighborhood" autocomplete="off">
+    <button>Go</button>
+  </form>
+
+
+  <h2><span>In this view</span><span id="view-count"></span></h2>
+  <div class="bar" id="view-bar"></div>
+  <div class="bar-label" id="view-label">Zoom in to count lots on screen.</div>
+
+  <details id="owners-box">
+    <summary>Largest company owners</summary>
+    <ol class="owners" id="owners"></ol>
+  </details>
+
+  <p class="note" id="note">
+    Owner type is inferred from the owner name and mailing address in the
+    <a href="https://www.rva.gov/assessor-real-estate" target="_blank" rel="noopener">City Assessor</a>'s
+    public records. "Owner-occupied" means the tax bill is mailed to the property itself, so a few
+    landlords who live elsewhere but use the property address will show as green. Treat this as an
+    estimate, not a legal determination.
+  </p>
+</aside>
+<div id="msg"></div>
+
+<script src="vendor/maplibre-gl.js"></script>
+<script src="vendor/pmtiles.js"></script>
+<script>
+const CATS = [
+  { key: "owner_occupied", label: "Owner-occupied", hint: "Individual; tax bill goes to this address", color: "var(--owner)", hex: "#1f9d55" },
+  { key: "individual_landlord", label: "Individual landlord", hint: "Individual; tax bill goes elsewhere", color: "var(--landlord)", hex: "#e0a32e" },
+  { key: "company", label: "Company-owned", hint: "LLC, corporation, bank, investor", color: "var(--company)", hex: "#d43d3d" },
+  { key: "public_nonprofit", label: "Public / non-profit", hint: "Government, housing authority, church, land trust", color: "var(--public)", hex: "#7d8590" },
+];
+const active = new Set(CATS.map((_, i) => i));
+const RICHMOND = { center: [-77.455, 37.545], zoom: 13 };
+const MIN_COUNT_ZOOM = 13.5;
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmt = n => n.toLocaleString("en-US");
+const pct = (n, t) => t ? Math.round(100 * n / t) + "%" : "–";
+function flash(text, ms = 2500) {
+  const m = document.getElementById("msg");
+  m.textContent = text; m.style.display = "block";
+  clearTimeout(flash.t); flash.t = setTimeout(() => m.style.display = "none", ms);
+}
+
+// ---- map --------------------------------------------------------------
+const protocol = new pmtiles.Protocol();
+maplibregl.addProtocol("pmtiles", protocol.tile);
+const carto = layer => ["a", "b", "c", "d"].map(s => `https://${s}.basemaps.cartocdn.com/${layer}/{z}/{x}/{y}@2x.png`);
+
+const map = new maplibregl.Map({
+  container: "map",
+  center: RICHMOND.center,
+  zoom: RICHMOND.zoom,
+  minZoom: 10,
+  maxZoom: 19,
+  maxBounds: [[-77.75, 37.35], [-77.15, 37.75]],
+  hash: true,
+  attributionControl: { compact: true },
+  style: {
+    version: 8,
+    sources: {
+      base: { type: "raster", tiles: carto("light_nolabels"), tileSize: 256, maxzoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>' },
+      labels: { type: "raster", tiles: carto("light_only_labels"), tileSize: 256, maxzoom: 19 },
+      parcels: { type: "vector", url: "pmtiles://" + new URL("data/parcels.pmtiles", location.href).href,
+        attribution: 'Parcels: <a href="https://richmond-geo-hub-cor.hub.arcgis.com/">City of Richmond</a>' },
+    },
+    layers: [
+      { id: "base", type: "raster", source: "base" },
+      { id: "parcels-fill", type: "fill", source: "parcels", "source-layer": "parcels",
+        paint: {
+          "fill-color": ["match", ["get", "c"], 0, CATS[0].hex, 1, CATS[1].hex, 2, CATS[2].hex, CATS[3].hex],
+          "fill-opacity": ["interpolate", ["linear"], ["zoom"], 11, 0.8, 16, 0.6],
+        } },
+      { id: "parcels-line", type: "line", source: "parcels", "source-layer": "parcels", minzoom: 14.5,
+        paint: { "line-color": "#ffffff", "line-width": ["interpolate", ["linear"], ["zoom"], 14.5, 0.3, 18, 1.5] } },
+      { id: "parcels-selected", type: "line", source: "parcels", "source-layer": "parcels",
+        filter: ["==", ["get", "id"], ""], paint: { "line-color": "#111", "line-width": 2.5 } },
+      { id: "labels", type: "raster", source: "labels" },
+    ],
+  },
+});
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+map.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true } }), "bottom-right");
+map.addControl(new maplibregl.ScaleControl({ unit: "imperial" }), "bottom-left");
+
+function applyFilter() {
+  const f = ["in", ["get", "c"], ["literal", [...active]]];
+  map.setFilter("parcels-fill", f);
+  map.setFilter("parcels-line", f);
+  updateView();
+}
+
+// ---- legend -----------------------------------------------------------
+const legend = document.getElementById("legend");
+CATS.forEach((c, i) => {
+  const li = document.createElement("li");
+  li.innerHTML = `<span class="sw" style="background:${c.color}"></span>
+    <span class="name">${c.label}<small>${c.hint}</small></span>
+    <span class="pct" id="pct-${i}">–</span>`;
+  li.title = "Click to show / hide";
+  li.onclick = () => {
+    active.has(i) ? active.delete(i) : active.add(i);
+    li.classList.toggle("off", !active.has(i));
+    applyFilter();
+  };
+  legend.appendChild(li);
+});
+
+fetch("data/stats.json").then(r => r.json()).then(s => {
+  CATS.forEach((c, i) => {
+    const n = s.categories[c.key] || 0;
+    document.getElementById("pct-" + i).innerHTML = `${pct(n, s.total)}<small>${fmt(n)}</small>`;
+  });
+  document.getElementById("owners").innerHTML = s.top_company_owners
+    .map(o => `<li data-rank="${o.rank}">${esc(o.name)} — <b>${fmt(o.parcels)}</b></li>`).join("");
+  document.getElementById("note").insertAdjacentHTML("beforeend",
+    ` City-wide: ${fmt(s.total)} residential lots. Data pulled ${esc(s.generated)}.`);
+}).catch(() => {});
+
+// Click a top owner to highlight all their lots.
+document.getElementById("owners").addEventListener("click", e => {
+  const li = e.target.closest("li"); if (!li) return;
+  const rank = +li.dataset.rank, name = li.textContent.split(" — ")[0];
+  const on = map.getLayer("owner-hl") && li.classList.contains("hl");
+  document.querySelectorAll("#owners li").forEach(x => x.classList.remove("hl"));
+  if (map.getLayer("owner-hl")) map.removeLayer("owner-hl");
+  if (on) return;
+  li.classList.add("hl");
+  map.addLayer({ id: "owner-hl", type: "line", source: "parcels", "source-layer": "parcels",
+    filter: ["==", ["get", "k"], rank],
+    paint: { "line-color": "#111", "line-width": ["interpolate", ["linear"], ["zoom"], 11, 1.5, 16, 3] } }, "labels");
+  flash(`Outlined: ${name}. Tap again to clear.`);
+});
+
+// ---- in-view counts ---------------------------------------------------
+function updateView() {
+  const bar = document.getElementById("view-bar"), label = document.getElementById("view-label"),
+        count = document.getElementById("view-count");
+  if (!map.getLayer("parcels-fill") || map.getZoom() < MIN_COUNT_ZOOM) {
+    bar.innerHTML = ""; count.textContent = "";
+    label.textContent = "Zoom in to count lots on screen."; return;
+  }
+  const seen = new Map();
+  for (const f of map.queryRenderedFeatures({ layers: ["parcels-fill"] })) seen.set(f.properties.id, f.properties.c);
+  const n = [0, 0, 0, 0];
+  for (const c of seen.values()) n[c]++;
+  const total = seen.size;
+  count.textContent = total ? fmt(total) + " lots" : "";
+  bar.innerHTML = CATS.map((c, i) => `<span style="width:${total ? 100 * n[i] / total : 0}%;background:${c.color}" title="${c.label}: ${fmt(n[i])}"></span>`).join("");
+  label.textContent = total
+    ? CATS.map((c, i) => `${c.label.split(/[ -]/)[0]} ${pct(n[i], total)}`).join(" · ")
+    : "No residential lots here.";
+}
+map.on("moveend", updateView);
+map.on("idle", () => { if (!updateView.done) { updateView.done = true; updateView(); } });
+map.on("sourcedata", e => { if (e.sourceId === "parcels" && e.isSourceLoaded) updateView(); });
+map.on("error", e => {
+  if (String(e.error?.message || "").includes("parcels")) flash("Parcel data not available yet.", 5000);
+});
+
+// ---- popups -----------------------------------------------------------
+map.on("click", "parcels-fill", e => {
+  const p = e.features[0].properties, c = CATS[p.c];
+  if (p.o === undefined) {  // zoomed-out tiles carry colors only
+    map.flyTo({ center: e.lngLat, zoom: 16 });
+    return flash("Zooming in — tap a lot again for details.");
+  }
+  map.setFilter("parcels-selected", ["==", ["get", "id"], p.id]);
+  const rows = [
+    ["Owner", p.o], ["Mailing address", p.m], ["Land use", p.lu],
+    ["Year built", p.y], ["Assessed value", p.v ? "$" + fmt(+p.v) : ""], ["Parcel ID", p.id],
+  ].filter(r => r[1]).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("");
+  new maplibregl.Popup({ maxWidth: "300px" }).setLngLat(e.lngLat).setHTML(
+    `<div class="pop"><div class="addr">${esc(p.a || "No address")}</div>
+     <span class="chip" style="background:${c.hex}">${c.label}</span>
+     <div class="why">${esc(p.r)}</div><dl>${rows}</dl></div>`
+  ).on("close", () => map.setFilter("parcels-selected", ["==", ["get", "id"], ""])).addTo(map);
+});
+map.on("mouseenter", "parcels-fill", () => map.getCanvas().style.cursor = "pointer");
+map.on("mouseleave", "parcels-fill", () => map.getCanvas().style.cursor = "");
+
+// ---- search (OpenStreetMap Nominatim, limited to Richmond) ------------
+document.getElementById("search").addEventListener("submit", async e => {
+  e.preventDefault();
+  const q = document.getElementById("q").value.trim(); if (!q) return;
+  const url = "https://nominatim.openstreetmap.org/search?" + new URLSearchParams({
+    q: /richmond/i.test(q) ? q : q + ", Richmond, VA", format: "json", limit: 1,
+    viewbox: "-77.61,37.61,-77.38,37.44", bounded: 1,
+  });
+  try {
+    const [hit] = await (await fetch(url)).json();
+    if (!hit) return flash("No match in Richmond for “" + q + "”.");
+    const isPlace = ["suburb", "neighbourhood", "quarter"].includes(hit.addresstype || hit.type);
+    map.flyTo({ center: [+hit.lon, +hit.lat], zoom: isPlace ? 15 : 17.5 });
+    document.getElementById("q").blur();
+    if (window.innerWidth <= 640) setCollapsed(true);
+  } catch { flash("Search is unavailable right now."); }
+});
+
+// ---- mobile bottom sheet ----------------------------------------------
+const panel = document.getElementById("panel"), toggle = document.getElementById("toggle");
+function setCollapsed(c) { panel.classList.toggle("collapsed", c); toggle.textContent = c ? "▴" : "▾"; }
+toggle.onclick = () => setCollapsed(!panel.classList.contains("collapsed"));
+if (window.innerWidth <= 640) setCollapsed(true);
+</script>
+</body>
+</html>

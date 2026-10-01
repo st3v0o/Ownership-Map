@@ -1,0 +1,12 @@
+{
+  "name": "ownership-map",
+  "private": true,
+  "description": "Map of Richmond, VA residential parcels by owner type",
+  "scripts": {
+    "vendor": "mkdir -p site/vendor && cp node_modules/maplibre-gl/dist/maplibre-gl.js node_modules/maplibre-gl/dist/maplibre-gl.css node_modules/pmtiles/dist/pmtiles.js site/vendor/"
+  },
+  "dependencies": {
+    "maplibre-gl": "^4.7.1",
+    "pmtiles": "^3.2.1"
+  }
+}

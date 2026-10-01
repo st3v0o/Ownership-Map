@@ -1,0 +1,5 @@
+node_modules/
+build/
+site/vendor/
+site/data/
+__pycache__/
