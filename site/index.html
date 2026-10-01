@@ -47,11 +47,49 @@
   .legend .pct { font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; min-width: 52px; }
   .legend .pct small { display: block; font-weight: 400; color: var(--muted); font-size: 11px; }
 
-  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
-    margin: 14px 0 6px; display: flex; justify-content: space-between; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 0 6px; }
   .bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--line); }
-  .bar span { height: 100%; transition: width .3s; }
+  .bar span { height: 100%; transition: width .2s; }
+  h2 #view-count { font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 4px; }
   .bar-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  /* scope toggle + linked charts */
+  .head { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 6px; }
+  .head h2 { margin: 0; }
+  .seg { display: inline-flex; background: var(--line); border-radius: 8px; padding: 2px; }
+  .seg button { white-space: nowrap; border: 0; background: none; font: inherit; font-size: 12px; padding: 3px 9px;
+    border-radius: 6px; cursor: pointer; color: var(--muted); }
+  .seg button.on { background: #fff; color: var(--ink); box-shadow: 0 1px 2px #0002; }
+  .chart { margin-top: 14px; }
+  .chart h3 { font-size: 12.5px; margin: 0 0 4px; display: flex; justify-content: space-between; gap: 8px; }
+  .chart h3 .sel { font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .clear { border: 0; background: none; color: #2563eb; font: inherit; font-size: 12px; cursor: pointer; padding: 0; }
+  .hist { display: block; width: 100%; height: 70px; touch-action: none; cursor: crosshair; }
+  .axis { position: relative; height: 14px; font-size: 10.5px; color: var(--muted); }
+  .axis span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+  .axis span:first-child { transform: none; } .axis span:last-child { transform: translateX(-100%); }
+  .hint { font-size: 11.5px; color: var(--muted); min-height: 16px; }
+  .range { position: relative; height: 22px; margin: 2px 0 0; }
+  .range input { position: absolute; inset: 0; width: 100%; margin: 0; background: none;
+    pointer-events: none; -webkit-appearance: none; appearance: none; height: 22px; }
+  .range input::-webkit-slider-thumb { pointer-events: auto; -webkit-appearance: none; width: 18px; height: 18px;
+    border-radius: 50%; background: #fff; border: 2px solid var(--ink); cursor: grab; }
+  .range input::-moz-range-thumb { pointer-events: auto; width: 14px; height: 14px; border-radius: 50%;
+    background: #fff; border: 2px solid var(--ink); cursor: grab; }
+  .range .track { position: absolute; left: 9px; right: 9px; top: 10px; height: 3px; background: var(--line); border-radius: 2px; }
+  .range .fill { position: absolute; top: 0; bottom: 0; background: var(--ink); border-radius: 2px; }
+  .rows { display: grid; grid-template-columns: minmax(96px, auto) 1fr 44px; gap: 3px 8px; align-items: center;
+    font-size: 12px; }
+  .rows .r { display: contents; cursor: pointer; }
+  .rows .r > * { transition: opacity .15s; }
+  .rows .r.off > * { opacity: .35; }
+  .rows .r:hover .lbl { text-decoration: underline; }
+  .rows .lbl.picked::before { content: "▸ "; }
+  .rows .stack { display: flex; height: 12px; border-radius: 3px; overflow: hidden; background: #0000000a; }
+  .rows .num { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  #reset { margin-top: 12px; width: 100%; padding: 7px; border: 1px solid var(--line); border-radius: 8px;
+    background: #fff; font: inherit; font-size: 12.5px; cursor: pointer; display: none; }
+  #reset.show { display: block; }
 
   details summary { cursor: pointer; font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
     color: var(--muted); margin-top: 14px; }
@@ -75,7 +113,7 @@
     color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 13px; z-index: 3; display: none; }
 
   @media (max-width: 640px) {
-    #panel { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 55%;
+    #panel { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 70%;
       border-radius: 14px 14px 0 0; padding: 12px 14px calc(12px + env(safe-area-inset-bottom)); }
     #panel.collapsed { max-height: 196px; overflow: hidden; }
     #panel.collapsed .sub, #panel.collapsed .legend small { display: none; }
@@ -102,9 +140,38 @@
   </form>
 
 
-  <h2><span>In this view</span><span id="view-count"></span></h2>
+  <div class="head">
+    <h2>Lots <span id="view-count"></span></h2>
+    <div class="seg" id="scope">
+      <button data-scope="view" class="on">This view</button><button data-scope="city">Whole city</button>
+    </div>
+  </div>
   <div class="bar" id="view-bar"></div>
-  <div class="bar-label" id="view-label">Zoom in to count lots on screen.</div>
+  <div class="bar-label" id="view-label">Loading lots…</div>
+
+  <section class="chart">
+    <h3>Assessed value <span class="sel" id="sel-value">Drag to filter</span></h3>
+    <svg class="hist" id="hist" role="img" aria-label="Assessed value histogram"></svg>
+    <div class="axis" id="axis"></div>
+    <div class="range" id="range">
+      <div class="track"><div class="fill" id="range-fill"></div></div>
+      <input type="range" id="lo" aria-label="Minimum assessed value">
+      <input type="range" id="hi" aria-label="Maximum assessed value">
+    </div>
+    <div class="hint" id="hint-value"></div>
+  </section>
+
+  <section class="chart">
+    <h3>Where the tax bill goes <button class="clear" id="clear-where" hidden>Show all</button></h3>
+    <div class="rows" id="rows-where"></div>
+  </section>
+
+  <section class="chart">
+    <h3>Land use <button class="clear" id="clear-use" hidden>Show all</button></h3>
+    <div class="rows" id="rows-use"></div>
+  </section>
+
+  <button id="reset">Reset all filters</button>
 
   <details id="owners-box">
     <summary>Largest company owners</summary>
@@ -128,11 +195,23 @@ const CATS = [
   { key: "owner_occupied", label: "Owner-occupied", hint: "Individual; tax bill goes to this address", color: "var(--owner)", hex: "#1f9d55" },
   { key: "individual_landlord", label: "Individual landlord", hint: "Individual; tax bill goes elsewhere", color: "var(--landlord)", hex: "#e0a32e" },
   { key: "company", label: "Company-owned", hint: "LLC, corporation, bank, investor", color: "var(--company)", hex: "#d43d3d" },
-  { key: "public_nonprofit", label: "Public / non-profit", hint: "Government, housing authority, church, land trust", color: "var(--public)", hex: "#7d8590" },
+  { key: "public_nonprofit", label: "Public / non-profit", hint: "Government, housing authority, church, community land trust", color: "var(--public)", hex: "#7d8590" },
 ];
 const active = new Set(CATS.map((_, i) => i));
 const RICHMOND = { center: [-77.455, 37.545], zoom: 13 };
-const MIN_COUNT_ZOOM = 13.5;
+
+// Linked filters. Each chart counts lots with every *other* filter applied,
+// so you can see what a filter would add before you pick it.
+// Value bins in $1000s; the last one is open ended.
+const EDGES = [0, 50, 75, 100, 125, 150, 175, 200, 225, 250, 275, 300, 350, 400, 450, 500,
+  600, 700, 800, 1000, 1250, 1500, 2000, Infinity];
+const NBINS = EDGES.length - 1;
+const WHERE = ["At the property", "Richmond address", "Elsewhere in VA", "Out of state", "No address"];
+const USES = ["Single family", "Duplex", "Multi-family"];
+const F = { lo: 0, hi: NBINS, where: new Set(WHERE.keys()), use: new Set(USES.keys()), scope: "view" };
+const money = k => k === Infinity ? "" : k >= 1000 ? `$${+(k / 1000).toFixed(2)}M` : `$${k}k`;
+const rangeText = (lo, hi) => hi === NBINS ? `${money(EDGES[lo])}+` : `${money(EDGES[lo])} – ${money(EDGES[hi])}`;
+const valueFiltered = () => F.lo > 0 || F.hi < NBINS;
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmt = n => n.toLocaleString("en-US");
@@ -175,18 +254,31 @@ map.once("style.load", () => {
     paint: { "line-color": "#ffffff", "line-width": ["interpolate", ["linear"], ["zoom"], 14.5, 0.3, 18, 1.5] } }, labelsBelow);
   map.addLayer({ id: "parcels-selected", type: "line", source: "parcels", "source-layer": "parcels",
     filter: ["==", ["get", "id"], ""], paint: { "line-color": "#111", "line-width": 2.5 } }, labelsBelow);
-  if (active.size < CATS.length) applyFilter();
+  applyFilter();
 });
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
 map.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true } }), "bottom-right");
 map.addControl(new maplibregl.ScaleControl({ unit: "imperial" }), "bottom-left");
 
+function mapFilter() {
+  const f = ["all", ["in", ["get", "c"], ["literal", [...active]]]];
+  if (valueFiltered()) {
+    const v = ["to-number", ["get", "v"], -1];
+    f.push([">=", v, EDGES[F.lo] * 1000]);
+    if (F.hi < NBINS) f.push(["<", v, EDGES[F.hi] * 1000]);
+  }
+  if (F.where.size < WHERE.length) f.push(["in", ["get", "w"], ["literal", [...F.where]]]);
+  if (F.use.size < USES.length) f.push(["in", ["get", "u"], ["literal", [...F.use]]]);
+  return f;
+}
 function applyFilter() {
+  document.getElementById("reset").classList.toggle("show",
+    active.size < CATS.length || valueFiltered() || F.where.size < WHERE.length || F.use.size < USES.length);
+  updateView();
   if (!map.getLayer("parcels-fill")) return;
-  const f = ["in", ["get", "c"], ["literal", [...active]]];
+  const f = mapFilter();
   map.setFilter("parcels-fill", f);
   map.setFilter("parcels-line", f);
-  updateView();
 }
 
 // ---- legend -----------------------------------------------------------
@@ -206,10 +298,6 @@ CATS.forEach((c, i) => {
 });
 
 fetch("data/stats.json").then(r => r.json()).then(s => {
-  CATS.forEach((c, i) => {
-    const n = s.categories[c.key] || 0;
-    document.getElementById("pct-" + i).innerHTML = `${pct(n, s.total)}<small>${fmt(n)}</small>`;
-  });
   document.getElementById("owners").innerHTML = s.top_company_owners
     .map(o => `<li data-rank="${o.rank}">${esc(o.name)} — <b>${fmt(o.parcels)}</b></li>`).join("");
   document.getElementById("note").insertAdjacentHTML("beforeend",
@@ -231,28 +319,190 @@ document.getElementById("owners").addEventListener("click", e => {
   flash(`Outlined: ${name}. Tap again to clear.`);
 });
 
-// ---- in-view counts ---------------------------------------------------
-function updateView() {
-  const bar = document.getElementById("view-bar"), label = document.getElementById("view-label"),
-        count = document.getElementById("view-count");
-  if (!map.getLayer("parcels-fill") || map.getZoom() < MIN_COUNT_ZOOM) {
-    bar.innerHTML = ""; count.textContent = "";
-    label.textContent = "Zoom in to count lots on screen."; return;
+// ---- linked counts and charts ------------------------------------------
+// data/facets.json holds every lot's category, value ($1000s), land use,
+// owner location and centroid, so counts work at any zoom.
+let D = null, picked = null;
+fetch("data/facets.json").then(r => r.json()).then(d => {
+  const n = d.c.length, bin = new Int8Array(n);
+  for (let i = 0, b = 0; i < n; i++) {
+    const v = d.v[i];
+    if (v < 0) { bin[i] = -1; continue; }
+    for (b = 0; v >= EDGES[b + 1]; b++);
+    bin[i] = b;
   }
-  const seen = new Map();
-  for (const f of map.queryRenderedFeatures({ layers: ["parcels-fill"] })) seen.set(f.properties.id, f.properties.c);
-  const n = [0, 0, 0, 0];
-  for (const c of seen.values()) n[c]++;
-  const total = seen.size;
-  count.textContent = total ? fmt(total) + " lots" : "";
-  bar.innerHTML = CATS.map((c, i) => `<span style="width:${total ? 100 * n[i] / total : 0}%;background:${c.color}" title="${c.label}: ${fmt(n[i])}"></span>`).join("");
-  label.textContent = total
-    ? CATS.map((c, i) => `${c.label.split(/[ -]/)[0]} ${pct(n[i], total)}`).join(" · ")
-    : "No residential lots here.";
+  D = { ...d, n, bin };
+  updateView();
+}).catch(() => { document.getElementById("view-label").textContent = "Charts unavailable."; });
+
+function count() {
+  const z = () => [0, 0, 0, 0];
+  const out = { cats: z(), match: z(), value: Array.from({ length: NBINS }, z),
+    where: WHERE.map(z), use: USES.map(z) };
+  let x0 = -Infinity, x1 = Infinity, y0 = -Infinity, y1 = Infinity;
+  if (F.scope === "view") {
+    const b = map.getBounds(), [ox, oy] = D.origin, s = D.scale;
+    x0 = (b.getWest() - ox) * s; x1 = (b.getEast() - ox) * s;
+    y0 = (b.getSouth() - oy) * s; y1 = (b.getNorth() - oy) * s;
+  }
+  const { c: C, u: U, w: W, x: X, y: Y, bin: B, n } = D, vf = valueFiltered();
+  for (let i = 0; i < n; i++) {
+    const x = X[i], y = Y[i];
+    if (x < x0 || x > x1 || y < y0 || y > y1) continue;
+    const c = C[i], b = B[i], u = U[i], w = W[i];
+    const okC = active.has(c), okV = !vf || (b >= F.lo && b < F.hi), okU = F.use.has(u), okW = F.where.has(w);
+    if (okV && okU && okW) out.cats[c]++;
+    if (okC && okU && okW && b >= 0) out.value[b][c]++;
+    if (okC && okV && okW && u < USES.length) out.use[u][c]++;
+    if (okC && okV && okU) out.where[w][c]++;
+    if (okC && okV && okU && okW) out.match[c]++;
+  }
+  return out;
 }
-map.on("moveend", updateView);
-map.on("idle", () => { if (!updateView.done) { updateView.done = true; updateView(); } });
-map.on("sourcedata", e => { if (e.sourceId === "parcels" && e.isSourceLoaded) updateView(); });
+
+const sum = a => a[0] + a[1] + a[2] + a[3];
+const stackSpans = (n, total) => CATS.map((c, i) => active.has(i) && n[i]
+  ? `<span style="width:${100 * n[i] / total}%;background:${c.color}"></span>` : "").join("");
+
+function updateView() {
+  if (!D) return;
+  const k = count(), total = sum(k.match);
+  // header bar
+  document.getElementById("view-count").textContent = fmt(total);
+  document.getElementById("view-bar").innerHTML = total ? stackSpans(k.match, total) : "";
+  document.getElementById("view-label").textContent = total
+    ? CATS.map((c, i) => active.has(i) ? `${c.label.split(/[ -]/)[0]} ${pct(k.match[i], total)}` : "").filter(Boolean).join(" · ")
+    : "No lots match here.";
+  // legend: share of lots matching the other filters
+  const ct = sum(k.cats);
+  CATS.forEach((c, i) => document.getElementById("pct-" + i).innerHTML = `${pct(k.cats[i], ct)}<small>${fmt(k.cats[i])}</small>`);
+  drawHistogram(k.value);
+  drawRows("rows-where", WHERE, k.where, F.where, picked?.w, "clear-where");
+  drawRows("rows-use", USES, k.use, F.use, picked?.u, "clear-use");
+}
+
+// Histogram: stacked by owner type; drag across it or use the slider to filter.
+const hist = document.getElementById("hist"), HW = 300, HH = 70;
+hist.setAttribute("viewBox", `0 0 ${HW} ${HH}`);
+hist.setAttribute("preserveAspectRatio", "none");
+let lastValue = null;
+function drawHistogram(bins) {
+  lastValue = bins;
+  const max = Math.max(1, ...bins.map(sum)), bw = HW / NBINS;
+  let svg = "";
+  bins.forEach((n, b) => {
+    const on = !valueFiltered() || (b >= F.lo && b < F.hi);
+    let y = HH;
+    CATS.forEach((c, i) => {
+      if (!n[i]) return;
+      const h = (HH - 4) * n[i] / max;
+      y -= h;
+      svg += `<rect x="${b * bw + .5}" y="${y}" width="${bw - 1}" height="${h}" fill="${c.hex}" opacity="${on ? 1 : .22}"/>`;
+    });
+  });
+  if (picked && picked.bin >= 0) {
+    const cx = (picked.bin + .5) * bw;
+    svg += `<path d="M${cx - 4} 0 L${cx + 4} 0 L${cx} 6 Z" fill="#111"/>`;
+  }
+  hist.innerHTML = svg;
+  document.getElementById("sel-value").textContent = valueFiltered() ? rangeText(F.lo, F.hi) : "Drag to filter";
+  syncSlider();
+}
+const axis = document.getElementById("axis");
+axis.innerHTML = [0, 7, 15, 19, 22, NBINS].map(e =>
+  `<span style="left:${100 * e / NBINS}%">${e === NBINS ? "" : e === 0 ? "$0" : e === 22 ? "$2M+" : money(EDGES[e])}</span>`).join("");
+
+const binAt = ev => {
+  const r = hist.getBoundingClientRect();
+  return Math.max(0, Math.min(NBINS - 1, Math.floor(NBINS * (ev.clientX - r.left) / r.width)));
+};
+let drag = null;
+hist.addEventListener("pointerdown", ev => {
+  hist.setPointerCapture(ev.pointerId);
+  const b = binAt(ev);
+  drag = { start: b, moved: false, was: [F.lo, F.hi] };
+  setValue(b, b + 1);
+});
+hist.addEventListener("pointermove", ev => {
+  const b = binAt(ev);
+  if (drag) {
+    if (b !== drag.start) drag.moved = true;
+    setValue(Math.min(b, drag.start), Math.max(b, drag.start) + 1);
+  } else if (lastValue) {
+    const n = lastValue[b], t = sum(n);
+    document.getElementById("hint-value").textContent = `${rangeText(b, b + 1)}: ${fmt(t)} lots` +
+      (t ? ` · ${pct(n[2], t)} company, ${pct(n[0], t)} owner-occupied` : "");
+  }
+});
+hist.addEventListener("pointerup", () => {
+  // Tapping the single bar that is already selected clears the filter.
+  if (drag && !drag.moved && drag.was[0] === drag.start && drag.was[1] === drag.start + 1) setValue(0, NBINS);
+  drag = null;
+});
+hist.addEventListener("pointerleave", () => { if (!drag) document.getElementById("hint-value").textContent = ""; });
+
+const lo = document.getElementById("lo"), hi = document.getElementById("hi");
+for (const el of [lo, hi]) { el.min = 0; el.max = NBINS; el.step = 1; }
+function syncSlider() {
+  lo.value = F.lo; hi.value = F.hi;
+  const fill = document.getElementById("range-fill");
+  fill.style.left = 100 * F.lo / NBINS + "%"; fill.style.right = 100 * (1 - F.hi / NBINS) + "%";
+  lo.setAttribute("aria-valuetext", money(EDGES[F.lo]) || "$0");
+  hi.setAttribute("aria-valuetext", F.hi === NBINS ? "No maximum" : money(EDGES[F.hi]));
+}
+lo.oninput = () => setValue(Math.min(+lo.value, F.hi - 1), F.hi);
+hi.oninput = () => setValue(F.lo, Math.max(+hi.value, F.lo + 1));
+
+let raf = 0;
+function setValue(l, h) {
+  F.lo = l; F.hi = h;
+  cancelAnimationFrame(raf); raf = requestAnimationFrame(applyFilter);
+}
+
+// Category rows: stacked bars; tap a row to show only it, tap more to add.
+function drawRows(id, labels, counts, sel, pickedIdx, clearId) {
+  const max = Math.max(1, ...counts.map(sum)), all = sel.size === labels.length;
+  document.getElementById(id).innerHTML = labels.map((l, i) => {
+    const t = sum(counts[i]);
+    if (!t && id === "rows-where" && i === labels.length - 1) return "";  // hide "No address" when empty
+    return `<div class="r${sel.has(i) ? "" : " off"}" data-i="${i}" title="Tap to filter">
+      <span class="lbl${pickedIdx === i ? " picked" : ""}">${l}</span>
+      <span class="stack" style="width:${Math.max(2, 100 * t / max)}%">${t ? stackSpans(counts[i], t) : ""}</span>
+      <span class="num">${fmt(t)}</span></div>`;
+  }).join("");
+  document.getElementById(clearId).hidden = all;
+}
+function rowToggle(set, n) {
+  return ev => {
+    const r = ev.target.closest(".r"); if (!r) return;
+    const i = +r.dataset.i;
+    if (set.size === n) { set.clear(); set.add(i); }        // first tap: only this one
+    else if (set.has(i)) { set.delete(i); if (!set.size) for (let j = 0; j < n; j++) set.add(j); }
+    else set.add(i);
+    applyFilter();
+  };
+}
+document.getElementById("rows-where").onclick = rowToggle(F.where, WHERE.length);
+document.getElementById("rows-use").onclick = rowToggle(F.use, USES.length);
+document.getElementById("clear-where").onclick = () => { WHERE.forEach((_, i) => F.where.add(i)); applyFilter(); };
+document.getElementById("clear-use").onclick = () => { USES.forEach((_, i) => F.use.add(i)); applyFilter(); };
+document.getElementById("reset").onclick = () => {
+  CATS.forEach((_, i) => active.add(i));
+  document.querySelectorAll("#legend li").forEach(li => li.classList.remove("off"));
+  WHERE.forEach((_, i) => F.where.add(i)); USES.forEach((_, i) => F.use.add(i));
+  F.lo = 0; F.hi = NBINS;
+  applyFilter();
+};
+document.getElementById("scope").onclick = ev => {
+  const b = ev.target.closest("button"); if (!b) return;
+  F.scope = b.dataset.scope;
+  document.querySelectorAll("#scope button").forEach(x => x.classList.toggle("on", x === b));
+  updateView();
+};
+
+let moveRaf = 0;
+map.on("move", () => { if (F.scope === "view") { cancelAnimationFrame(moveRaf); moveRaf = requestAnimationFrame(updateView); } });
+map.on("load", updateView);
 map.on("error", e => {
   if (String(e.error?.message || "").includes("parcels")) flash("Parcel data not available yet.", 5000);
 });
@@ -265,15 +515,21 @@ map.on("click", "parcels-fill", e => {
     return flash("Zooming in — tap a lot again for details.");
   }
   map.setFilter("parcels-selected", ["==", ["get", "id"], p.id]);
+  const vk = p.v ? +p.v / 1000 : -1;
+  picked = { w: p.w, u: p.u, bin: vk < 0 ? -1 : EDGES.findIndex((e, i) => vk >= e && vk < EDGES[i + 1]) };
+  updateView();
   const rows = [
-    ["Owner", p.o], ["Mailing address", p.m], ["Land use", p.lu],
+    ["Owner", p.o], ["Mailing address", p.m], ["Tax bill goes", WHERE[p.w]], ["Land use", p.lu],
     ["Year built", p.y], ["Assessed value", p.v ? "$" + fmt(+p.v) : ""], ["Parcel ID", p.id],
   ].filter(r => r[1]).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("");
   new maplibregl.Popup({ maxWidth: "300px" }).setLngLat(e.lngLat).setHTML(
     `<div class="pop"><div class="addr">${esc(p.a || "No address")}</div>
      <span class="chip" style="background:${c.hex}">${c.label}</span>
      <div class="why">${esc(p.r)}</div><dl>${rows}</dl></div>`
-  ).on("close", () => map.setFilter("parcels-selected", ["==", ["get", "id"], ""])).addTo(map);
+  ).on("close", () => {
+    map.setFilter("parcels-selected", ["==", ["get", "id"], ""]);
+    picked = null; updateView();
+  }).addTo(map);
 });
 map.on("mouseenter", "parcels-fill", () => map.getCanvas().style.cursor = "pointer");
 map.on("mouseleave", "parcels-fill", () => map.getCanvas().style.cursor = "");

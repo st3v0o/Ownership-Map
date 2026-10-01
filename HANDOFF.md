@@ -81,7 +81,18 @@ Richmond's servers were reachable from the Mac, so the build ran locally (full o
 Category split after the fixes (63,544 lots): owner-occupied ~65%, individual landlord ~17%, company ~17.5%,
 public/non-profit ~0.4%.
 
+## Linked charts (added in the second session)
+
+`site/index.html` has crossfiltered charts: an assessed-value histogram with brush and dual slider, "where the tax bill
+goes" rows, land-use rows, the owner-type legend, and a "This view / Whole city" toggle. They are driven by
+`site/data/facets.json` (columnar arrays `c, v ($1000s, -1 = none), u, w, x, y` with centroid offsets from `origin`
+in 1e-5 degrees), written by `build_data.py`. The map filter uses tile attributes `v` (dollars), `u` and `w`; z11-13
+tiles now carry them too. Owner location (`w`): 0 at the property, 1 Richmond mailing city, 2 elsewhere in VA,
+3 out of state, 4 no address. Note: "Richmond" mailing city includes Henrico/Chesterfield addresses.
+
 ## Ideas for later
+
+- Keep filter state in the URL so filtered views can be shared.
 
 - Group one investor's many LLCs by mailing address for the "largest owners" list.
 - "Unit Owners Assoc" / condo associations own common areas; consider hiding them.

@@ -21,7 +21,8 @@ import urllib.parse
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(__file__))
-from classify import CATEGORIES, COMPANY, classify, normalize_street, owner_key, same_address  # noqa: E402
+from classify import (CATEGORIES, COMPANY, classify, normalize_street, owner_key, same_address,
+                      same_house_number)  # noqa: E402
 
 LAYER_URL = os.environ.get(
     "PARCELS_LAYER_URL",
@@ -155,6 +156,33 @@ def property_addresses(candidates, bldg_no):
     return out
 
 
+# Facets the page's charts filter on. Order matters: the page uses the index.
+LAND_USES = ["Single Family", "Duplex (2 Family)", "Multi-Family"]
+WHERE = ["at_property", "richmond", "virginia", "out_of_state", "unknown"]
+FACET_ORIGIN = (-77.75, 37.35)  # centroids are stored as 1e-5 degree offsets from here
+
+
+def owner_location(addrs, bldg, mail_line, mail_city, mail_state):
+    """Index into WHERE: where the owner's tax bill is mailed."""
+    if any(same_address(a, mail_line) for a in addrs) or (
+            not addrs and same_house_number(bldg, mail_line, mail_city)):
+        return 0
+    if not mail_line.strip():
+        return 4
+    if (mail_city or "").strip().upper() == "RICHMOND":
+        return 1
+    if (mail_state or "").strip().upper() in ("VA", "VIRGINIA"):
+        return 2
+    return 3
+
+
+def centroid(geom):
+    """Vertex average of the largest outer ring; good enough to place a lot."""
+    polys = geom["coordinates"] if geom["type"] == "MultiPolygon" else [geom["coordinates"]]
+    ring = max((p[0] for p in polys if p), key=len)
+    return sum(x for x, _ in ring) / len(ring), sum(y for _, y in ring) / len(ring)
+
+
 def display_address(addrs, mail_line):
     """The parcel's address for the popup: the one tax bills go to when it is
     one of them, else the first; extra addresses are summarised."""
@@ -220,6 +248,7 @@ def main():
     company_owners = collections.Counter()
     samples = collections.defaultdict(list)
     kept = skipped = 0
+    facets = {k: [] for k in ("c", "v", "u", "w", "x", "y")}
 
     nd_path = os.path.join(args.out, "parcels.ndjson")
     with open(nd_path, "w") as nd:
@@ -264,7 +293,17 @@ def main():
                 "c": CATEGORIES.index(cat),
                 "r": reason,
                 "lu": lu,
+                "u": LAND_USES.index(lu) if lu in LAND_USES else len(LAND_USES),
+                "w": owner_location(addrs, bldg, mail_line, mail_city,
+                                    str(p.get(f_mstate) or "") if f_mstate else ""),
             }
+            cx, cy = centroid(feat["geometry"])
+            facets["c"].append(props["c"])
+            facets["v"].append(round(p.get(f_value) / 1000) if f_value and p.get(f_value) is not None else -1)
+            facets["u"].append(props["u"])
+            facets["w"].append(props["w"])
+            facets["x"].append(round((cx - FACET_ORIGIN[0]) * 1e5))
+            facets["y"].append(round((cy - FACET_ORIGIN[1]) * 1e5))
             if f_value and p.get(f_value) is not None:
                 props["v"] = p.get(f_value)
             if f_year and p.get(f_year):
@@ -309,6 +348,12 @@ def main():
         "categories": {c: by_cat[c] for c in CATEGORIES},
         "top_company_owners": [{"rank": top[n], "name": n, "parcels": k} for n, k in company_owners.most_common(25)],
     }
+    # Per-lot facets for the page's linked charts (columnar, values in $1000s).
+    with open(os.path.join(args.out, "facets.json"), "w") as f:
+        json.dump({"origin": FACET_ORIGIN, "scale": 1e5, "value_unit": 1000,
+                   "land_uses": LAND_USES, "where": WHERE, **facets}, f, separators=(",", ":"))
+    print("\nOwner location:", dict(collections.Counter(WHERE[w] for w in facets["w"])))
+    print("Land use index:", dict(collections.Counter(facets["u"])))
     with open(os.path.join(args.out, "stats.json"), "w") as f:
         json.dump(stats, f, indent=1)
     print("\nTop company owners:")

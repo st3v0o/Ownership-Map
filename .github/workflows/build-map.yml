@@ -46,7 +46,7 @@ jobs:
       - name: Build vector tiles
         run: |
           scripts/build_tiles.sh build/parcels.ndjson site/data/parcels.pmtiles
-          cp build/stats.json site/data/stats.json
+          cp build/stats.json build/facets.json site/data/
 
       - uses: actions/upload-pages-artifact@v3
         with:
