@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Who Owns Richmond's Homes</title>
+<meta name="description" content="Residential parcels in Richmond, VA colored by owner type: owner-occupied, individual landlord, company, or public/non-profit.">
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<style>
+  :root {
+    --owner: #1f9d55;
+    --landlord: #e0a32e;
+    --company: #d43d3d;
+    --public: #7d8590;
+    --ink: #1b1f24;
+    --muted: #5d6670;
+    --panel: #ffffffee;
+    --line: #e3e6ea;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #f2f2ef; color: var(--ink);
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  #map { position: absolute; inset: 0; }
+
+  #panel { position: absolute; top: 12px; left: 12px; width: 320px; max-height: calc(100% - 24px);
+    overflow: auto; background: var(--panel); backdrop-filter: blur(6px); border-radius: 12px;
+    box-shadow: 0 4px 20px #0002; padding: 14px 16px; z-index: 2; }
+  h1 { font-size: 17px; margin: 0 0 2px; }
+  .sub { color: var(--muted); font-size: 12px; margin: 0 0 10px; }
+  .toggle { position: absolute; right: 10px; top: 10px; border: 0; background: none; font-size: 18px;
+    cursor: pointer; color: var(--muted); display: none; }
+
+  form.search { display: flex; gap: 6px; margin-top: 12px; }
+  form.search input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--line);
+    border-radius: 8px; font: inherit; }
+  form.search button { padding: 8px 12px; border: 0; border-radius: 8px; background: var(--ink);
+    color: #fff; font: inherit; cursor: pointer; }
+
+  .legend { list-style: none; margin: 0; padding: 0; }
+  .legend li { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-radius: 8px;
+    cursor: pointer; user-select: none; }
+  .legend li:hover { background: #0000000a; }
+  .legend li.off { opacity: .35; }
+  .sw { width: 16px; height: 16px; border-radius: 4px; flex: none; }
+  .legend .name { flex: 1; }
+  .legend .name small { display: block; color: var(--muted); font-size: 11.5px; }
+  .legend .pct { font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; min-width: 52px; }
+  .legend .pct small { display: block; font-weight: 400; color: var(--muted); font-size: 11px; }
+
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 0 6px; }
+  .bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--line); }
+  .bar span { height: 100%; transition: width .2s; }
+  h2 #view-count { font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 4px; }
+  .bar-label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  /* scope toggle + linked charts */
+  .head { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 6px; }
+  .head h2 { margin: 0; }
+  .seg { display: inline-flex; background: var(--line); border-radius: 8px; padding: 2px; }
+  .seg button { white-space: nowrap; border: 0; background: none; font: inherit; font-size: 12px; padding: 3px 9px;
+    border-radius: 6px; cursor: pointer; color: var(--muted); }
+  .seg button.on { background: #fff; color: var(--ink); box-shadow: 0 1px 2px #0002; }
+  .chart { margin-top: 14px; }
+  .chart h3 { font-size: 12.5px; margin: 0 0 4px; display: flex; justify-content: space-between; gap: 8px; }
+  .chart h3 .sel { font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .clear { border: 0; background: none; color: #2563eb; font: inherit; font-size: 12px; cursor: pointer; padding: 0; }
+  .hist { display: block; width: 100%; height: 70px; touch-action: none; cursor: crosshair; }
+  .axis { position: relative; height: 14px; font-size: 10.5px; color: var(--muted); }
+  .axis span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+  .axis span:first-child { transform: none; } .axis span:last-child { transform: translateX(-100%); }
+  .hint { font-size: 11.5px; color: var(--muted); min-height: 16px; }
+  .range { position: relative; height: 22px; margin: 2px 0 0; }
+  .range input { position: absolute; inset: 0; width: 100%; margin: 0; background: none;
+    pointer-events: none; -webkit-appearance: none; appearance: none; height: 22px; }
+  .range input::-webkit-slider-thumb { pointer-events: auto; -webkit-appearance: none; width: 18px; height: 18px;
+    border-radius: 50%; background: #fff; border: 2px solid var(--ink); cursor: grab; }
+  .range input::-moz-range-thumb { pointer-events: auto; width: 14px; height: 14px; border-radius: 50%;
+    background: #fff; border: 2px solid var(--ink); cursor: grab; }
+  .range .track { position: absolute; left: 9px; right: 9px; top: 10px; height: 3px; background: var(--line); border-radius: 2px; }
+  .range .fill { position: absolute; top: 0; bottom: 0; background: var(--ink); border-radius: 2px; }
+  .rows { display: grid; grid-template-columns: minmax(96px, auto) 1fr 44px; gap: 3px 8px; align-items: center;
+    font-size: 12px; }
+  .rows .r { display: contents; cursor: pointer; }
+  .rows .r > * { transition: opacity .15s; }
+  .rows .r.off > * { opacity: .35; }
+  .rows .r:hover .lbl { text-decoration: underline; }
+  .rows .lbl.picked::before { content: "▸ "; }
+  .rows .stack { display: flex; height: 12px; border-radius: 3px; overflow: hidden; background: #0000000a; }
+  .rows .num { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  #reset { margin-top: 12px; width: 100%; padding: 7px; border: 1px solid var(--line); border-radius: 8px;
+    background: #fff; font: inherit; font-size: 12.5px; cursor: pointer; display: none; }
+  #reset.show { display: block; }
+
+  details summary { cursor: pointer; font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--muted); margin-top: 14px; }
+  ol.owners { margin: 6px 0 0; padding-left: 22px; font-size: 12.5px; }
+  ol.owners li { margin: 2px 0; cursor: pointer; }
+  ol.owners li:hover { text-decoration: underline; }
+  ol.owners li b { font-variant-numeric: tabular-nums; }
+  .note { font-size: 11.5px; color: var(--muted); margin-top: 12px; }
+  .note a { color: inherit; }
+
+  .maplibregl-popup-content { border-radius: 10px; padding: 12px 14px; font-size: 13px; max-width: 290px; }
+  .pop .addr { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+  .chip { display: inline-block; padding: 2px 8px; border-radius: 999px; color: #fff; font-size: 12px;
+    font-weight: 600; margin-bottom: 6px; }
+  .pop .why { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .pop dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 12.5px; }
+  .pop dt { color: var(--muted); }
+  .pop dd { margin: 0; word-break: break-word; }
+
+  #msg { position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--ink);
+    color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 13px; z-index: 3; display: none; }
+
+  @media (max-width: 640px) {
+    #panel { top: auto; bottom: 0; left: 0; right: 0; width: auto; max-height: 70%;
+      border-radius: 14px 14px 0 0; padding: 12px 14px calc(12px + env(safe-area-inset-bottom)); }
+    #panel.collapsed { max-height: 196px; overflow: hidden; }
+    #panel.collapsed .sub, #panel.collapsed .legend small { display: none; }
+    #panel.collapsed .legend li { padding: 3px 4px; }
+    form.search { margin: 12px 0 0; }
+    .toggle { display: block; }
+    .maplibregl-ctrl-bottom-right, .maplibregl-ctrl-bottom-left { bottom: 200px; }
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<aside id="panel">
+  <button class="toggle" id="toggle" aria-label="Show or hide details">▾</button>
+  <h1>Who owns Richmond's homes?</h1>
+  <p class="sub">Every residential lot in the city, colored by owner type. Tap a lot for details.</p>
+
+  <ul class="legend" id="legend"></ul>
+
+  <form class="search" id="search">
+    <input id="q" type="search" placeholder="Search an address or neighborhood" autocomplete="off">
+    <button>Go</button>
+  </form>
+
+
+  <div class="head">
+    <h2>Lots <span id="view-count"></span></h2>
+    <div class="seg" id="scope">
+      <button data-scope="view" class="on">This view</button><button data-scope="city">Whole city</button>
+    </div>
+  </div>
+  <div class="bar" id="view-bar"></div>
+  <div class="bar-label" id="view-label">Loading lots…</div>
+
+  <section class="chart">
+    <h3>Assessed value <span class="sel" id="sel-value">Drag to filter</span></h3>
+    <svg class="hist" id="hist" role="img" aria-label="Assessed value histogram"></svg>
+    <div class="axis" id="axis"></div>
+    <div class="range" id="range">
+      <div class="track"><div class="fill" id="range-fill"></div></div>
+      <input type="range" id="lo" aria-label="Minimum assessed value">
+      <input type="range" id="hi" aria-label="Maximum assessed value">
+    </div>
+    <div class="hint" id="hint-value"></div>
+  </section>
+
+  <section class="chart">
+    <h3>Where the tax bill goes <button class="clear" id="clear-where" hidden>Show all</button></h3>
+    <div class="rows" id="rows-where"></div>
+  </section>
+
+  <section class="chart">
+    <h3>Land use <button class="clear" id="clear-use" hidden>Show all</button></h3>
+    <div class="rows" id="rows-use"></div>
+  </section>
+
+  <button id="reset">Reset all filters</button>
+
+  <details id="owners-box">
+    <summary>Largest company owners</summary>
+    <ol class="owners" id="owners"></ol>
+  </details>
+
+  <p class="note" id="note">
+    Owner type is inferred from the owner name and mailing address in the
+    <a href="https://www.rva.gov/assessor-real-estate" target="_blank" rel="noopener">City Assessor</a>'s
+    public records. "Owner-occupied" means the tax bill is mailed to the property itself, so a few
+    landlords who live elsewhere but use the property address will show as green. Treat this as an
+    estimate, not a legal determination.
+  </p>
+</aside>
+<div id="msg"></div>
+
+<script src="vendor/maplibre-gl.js"></script>
+<script src="vendor/pmtiles.js"></script>
+<script>
+const CATS = [
+  { key: "owner_occupied", label: "Owner-occupied", hint: "Individual; tax bill goes to this address", color: "var(--owner)", hex: "#1f9d55" },
+  { key: "individual_landlord", label: "Individual landlord", hint: "Individual; tax bill goes elsewhere", color: "var(--landlord)", hex: "#e0a32e" },
+  { key: "company", label: "Company-owned", hint: "LLC, corporation, bank, investor", color: "var(--company)", hex: "#d43d3d" },
+  { key: "public_nonprofit", label: "Public / non-profit", hint: "Government, housing authority, church, community land trust", color: "var(--public)", hex: "#7d8590" },
+];
+const active = new Set(CATS.map((_, i) => i));
+const RICHMOND = { center: [-77.455, 37.545], zoom: 13 };
+
+// Linked filters. Each chart counts lots with every *other* filter applied,
+// so you can see what a filter would add before you pick it.
+// Value bins in $1000s; the last one is open ended.
+const EDGES = [0, 50, 75, 100, 125, 150, 175, 200, 225, 250, 275, 300, 350, 400, 450, 500,
+  600, 700, 800, 1000, 1250, 1500, 2000, Infinity];
+const NBINS = EDGES.length - 1;
+const WHERE = ["At the property", "Richmond address", "Elsewhere in VA", "Out of state", "No address"];
+const USES = ["Single family", "Duplex", "Multi-family"];
+const F = { lo: 0, hi: NBINS, where: new Set(WHERE.keys()), use: new Set(USES.keys()), scope: "view" };
+const money = k => k === Infinity ? "" : k >= 1000 ? `$${+(k / 1000).toFixed(2)}M` : `$${k}k`;
+const rangeText = (lo, hi) => hi === NBINS ? `${money(EDGES[lo])}+` : `${money(EDGES[lo])} – ${money(EDGES[hi])}`;
+const valueFiltered = () => F.lo > 0 || F.hi < NBINS;
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmt = n => n.toLocaleString("en-US");
+const pct = (n, t) => t ? Math.round(100 * n / t) + "%" : "–";
+function flash(text, ms = 2500) {
+  const m = document.getElementById("msg");
+  m.textContent = text; m.style.display = "block";
+  clearTimeout(flash.t); flash.t = setTimeout(() => m.style.display = "none", ms);
+}
+
+// ---- map --------------------------------------------------------------
+const protocol = new pmtiles.Protocol();
+maplibregl.addProtocol("pmtiles", protocol.tile);
+// Basemap: OpenFreeMap's Positron style (free, no API key). Parcels go
+// underneath its labels so street names stay readable.
+const BASEMAP = "https://tiles.openfreemap.org/styles/positron";
+let labelsBelow;  // first label layer; parcel layers are inserted before it
+
+const map = new maplibregl.Map({
+  container: "map",
+  center: RICHMOND.center,
+  zoom: RICHMOND.zoom,
+  minZoom: 10,
+  maxZoom: 19,
+  maxBounds: [[-77.75, 37.35], [-77.15, 37.75]],
+  hash: true,
+  attributionControl: { compact: true },
+  style: BASEMAP,
+});
+map.once("style.load", () => {
+  labelsBelow = map.getStyle().layers.find(l => l.type === "symbol")?.id;
+  map.addSource("parcels", { type: "vector", url: "pmtiles://" + new URL("data/parcels.pmtiles", location.href).href,
+    attribution: 'Parcels: <a href="https://richmond-geo-hub-cor.hub.arcgis.com/">City of Richmond</a>' });
+  map.addLayer({ id: "parcels-fill", type: "fill", source: "parcels", "source-layer": "parcels",
+    paint: {
+      "fill-color": ["match", ["get", "c"], 0, CATS[0].hex, 1, CATS[1].hex, 2, CATS[2].hex, CATS[3].hex],
+      "fill-opacity": ["interpolate", ["linear"], ["zoom"], 11, 0.8, 16, 0.6],
+    } }, labelsBelow);
+  map.addLayer({ id: "parcels-line", type: "line", source: "parcels", "source-layer": "parcels", minzoom: 14.5,
+    paint: { "line-color": "#ffffff", "line-width": ["interpolate", ["linear"], ["zoom"], 14.5, 0.3, 18, 1.5] } }, labelsBelow);
+  map.addLayer({ id: "parcels-selected", type: "line", source: "parcels", "source-layer": "parcels",
+    filter: ["==", ["get", "id"], ""], paint: { "line-color": "#111", "line-width": 2.5 } }, labelsBelow);
+  applyFilter();
+});
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+map.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true } }), "bottom-right");
+map.addControl(new maplibregl.ScaleControl({ unit: "imperial" }), "bottom-left");
+
+function mapFilter() {
+  const f = ["all", ["in", ["get", "c"], ["literal", [...active]]]];
+  if (valueFiltered()) {
+    const v = ["to-number", ["get", "v"], -1];
+    f.push([">=", v, EDGES[F.lo] * 1000]);
+    if (F.hi < NBINS) f.push(["<", v, EDGES[F.hi] * 1000]);
+  }
+  if (F.where.size < WHERE.length) f.push(["in", ["get", "w"], ["literal", [...F.where]]]);
+  if (F.use.size < USES.length) f.push(["in", ["get", "u"], ["literal", [...F.use]]]);
+  return f;
+}
+function applyFilter() {
+  document.getElementById("reset").classList.toggle("show",
+    active.size < CATS.length || valueFiltered() || F.where.size < WHERE.length || F.use.size < USES.length);
+  updateView();
+  if (!map.getLayer("parcels-fill")) return;
+  const f = mapFilter();
+  map.setFilter("parcels-fill", f);
+  map.setFilter("parcels-line", f);
+}
+
+// ---- legend -----------------------------------------------------------
+const legend = document.getElementById("legend");
+CATS.forEach((c, i) => {
+  const li = document.createElement("li");
+  li.innerHTML = `<span class="sw" style="background:${c.color}"></span>
+    <span class="name">${c.label}<small>${c.hint}</small></span>
+    <span class="pct" id="pct-${i}">–</span>`;
+  li.title = "Click to show / hide";
+  li.onclick = () => {
+    active.has(i) ? active.delete(i) : active.add(i);
+    li.classList.toggle("off", !active.has(i));
+    applyFilter();
+  };
+  legend.appendChild(li);
+});
+
+fetch("data/stats.json").then(r => r.json()).then(s => {
+  document.getElementById("owners").innerHTML = s.top_company_owners
+    .map(o => `<li data-rank="${o.rank}">${esc(o.name)} — <b>${fmt(o.parcels)}</b></li>`).join("");
+  document.getElementById("note").insertAdjacentHTML("beforeend",
+    ` City-wide: ${fmt(s.total)} residential lots. Data pulled ${esc(s.generated)}.`);
+}).catch(() => {});
+
+// Click a top owner to highlight all their lots.
+document.getElementById("owners").addEventListener("click", e => {
+  const li = e.target.closest("li"); if (!li || !map.getSource("parcels")) return;
+  const rank = +li.dataset.rank, name = li.textContent.split(" — ")[0];
+  const on = map.getLayer("owner-hl") && li.classList.contains("hl");
+  document.querySelectorAll("#owners li").forEach(x => x.classList.remove("hl"));
+  if (map.getLayer("owner-hl")) map.removeLayer("owner-hl");
+  if (on) return;
+  li.classList.add("hl");
+  map.addLayer({ id: "owner-hl", type: "line", source: "parcels", "source-layer": "parcels",
+    filter: ["==", ["get", "k"], rank],
+    paint: { "line-color": "#111", "line-width": ["interpolate", ["linear"], ["zoom"], 11, 1.5, 16, 3] } }, labelsBelow);
+  flash(`Outlined: ${name}. Tap again to clear.`);
+});
+
+// ---- linked counts and charts ------------------------------------------
+// data/facets.json holds every lot's category, value ($1000s), land use,
+// owner location and centroid, so counts work at any zoom.
+let D = null, picked = null;
+fetch("data/facets.json").then(r => r.json()).then(d => {
+  const n = d.c.length, bin = new Int8Array(n);
+  for (let i = 0, b = 0; i < n; i++) {
+    const v = d.v[i];
+    if (v < 0) { bin[i] = -1; continue; }
+    for (b = 0; v >= EDGES[b + 1]; b++);
+    bin[i] = b;
+  }
+  D = { ...d, n, bin };
+  updateView();
+}).catch(() => { document.getElementById("view-label").textContent = "Charts unavailable."; });
+
+function count() {
+  const z = () => [0, 0, 0, 0];
+  const out = { cats: z(), match: z(), value: Array.from({ length: NBINS }, z),
+    where: WHERE.map(z), use: USES.map(z) };
+  let x0 = -Infinity, x1 = Infinity, y0 = -Infinity, y1 = Infinity;
+  if (F.scope === "view") {
+    const b = map.getBounds(), [ox, oy] = D.origin, s = D.scale;
+    x0 = (b.getWest() - ox) * s; x1 = (b.getEast() - ox) * s;
+    y0 = (b.getSouth() - oy) * s; y1 = (b.getNorth() - oy) * s;
+  }
+  const { c: C, u: U, w: W, x: X, y: Y, bin: B, n } = D, vf = valueFiltered();
+  for (let i = 0; i < n; i++) {
+    const x = X[i], y = Y[i];
+    if (x < x0 || x > x1 || y < y0 || y > y1) continue;
+    const c = C[i], b = B[i], u = U[i], w = W[i];
+    const okC = active.has(c), okV = !vf || (b >= F.lo && b < F.hi), okU = F.use.has(u), okW = F.where.has(w);
+    if (okV && okU && okW) out.cats[c]++;
+    if (okC && okU && okW && b >= 0) out.value[b][c]++;
+    if (okC && okV && okW && u < USES.length) out.use[u][c]++;
+    if (okC && okV && okU) out.where[w][c]++;
+    if (okC && okV && okU && okW) out.match[c]++;
+  }
+  return out;
+}
+
+const sum = a => a[0] + a[1] + a[2] + a[3];
+const stackSpans = (n, total) => CATS.map((c, i) => active.has(i) && n[i]
+  ? `<span style="width:${100 * n[i] / total}%;background:${c.color}"></span>` : "").join("");
+
+function updateView() {
+  if (!D) return;
+  const k = count(), total = sum(k.match);
+  // header bar
+  document.getElementById("view-count").textContent = fmt(total);
+  document.getElementById("view-bar").innerHTML = total ? stackSpans(k.match, total) : "";
+  document.getElementById("view-label").textContent = total
+    ? CATS.map((c, i) => active.has(i) ? `${c.label.split(/[ -]/)[0]} ${pct(k.match[i], total)}` : "").filter(Boolean).join(" · ")
+    : "No lots match here.";
+  // legend: share of lots matching the other filters
+  const ct = sum(k.cats);
+  CATS.forEach((c, i) => document.getElementById("pct-" + i).innerHTML = `${pct(k.cats[i], ct)}<small>${fmt(k.cats[i])}</small>`);
+  drawHistogram(k.value);
+  drawRows("rows-where", WHERE, k.where, F.where, picked?.w, "clear-where");
+  drawRows("rows-use", USES, k.use, F.use, picked?.u, "clear-use");
+}
+
+// Histogram: stacked by owner type; drag across it or use the slider to filter.
+const hist = document.getElementById("hist"), HW = 300, HH = 70;
+hist.setAttribute("viewBox", `0 0 ${HW} ${HH}`);
+hist.setAttribute("preserveAspectRatio", "none");
+let lastValue = null;
+function drawHistogram(bins) {
+  lastValue = bins;
+  const max = Math.max(1, ...bins.map(sum)), bw = HW / NBINS;
+  let svg = "";
+  bins.forEach((n, b) => {
+    const on = !valueFiltered() || (b >= F.lo && b < F.hi);
+    let y = HH;
+    CATS.forEach((c, i) => {
+      if (!n[i]) return;
+      const h = (HH - 4) * n[i] / max;
+      y -= h;
+      svg += `<rect x="${b * bw + .5}" y="${y}" width="${bw - 1}" height="${h}" fill="${c.hex}" opacity="${on ? 1 : .22}"/>`;
+    });
+  });
+  if (picked && picked.bin >= 0) {
+    const cx = (picked.bin + .5) * bw;
+    svg += `<path d="M${cx - 4} 0 L${cx + 4} 0 L${cx} 6 Z" fill="#111"/>`;
+  }
+  hist.innerHTML = svg;
+  document.getElementById("sel-value").textContent = valueFiltered() ? rangeText(F.lo, F.hi) : "Drag to filter";
+  syncSlider();
+}
+const axis = document.getElementById("axis");
+axis.innerHTML = [0, 7, 15, 19, 22, NBINS].map(e =>
+  `<span style="left:${100 * e / NBINS}%">${e === NBINS ? "" : e === 0 ? "$0" : e === 22 ? "$2M+" : money(EDGES[e])}</span>`).join("");
+
+const binAt = ev => {
+  const r = hist.getBoundingClientRect();
+  return Math.max(0, Math.min(NBINS - 1, Math.floor(NBINS * (ev.clientX - r.left) / r.width)));
+};
+let drag = null;
+hist.addEventListener("pointerdown", ev => {
+  hist.setPointerCapture(ev.pointerId);
+  const b = binAt(ev);
+  drag = { start: b, moved: false, was: [F.lo, F.hi] };
+  setValue(b, b + 1);
+});
+hist.addEventListener("pointermove", ev => {
+  const b = binAt(ev);
+  if (drag) {
+    if (b !== drag.start) drag.moved = true;
+    setValue(Math.min(b, drag.start), Math.max(b, drag.start) + 1);
+  } else if (lastValue) {
+    const n = lastValue[b], t = sum(n);
+    document.getElementById("hint-value").textContent = `${rangeText(b, b + 1)}: ${fmt(t)} lots` +
+      (t ? ` · ${pct(n[2], t)} company, ${pct(n[0], t)} owner-occupied` : "");
+  }
+});
+hist.addEventListener("pointerup", () => {
+  // Tapping the single bar that is already selected clears the filter.
+  if (drag && !drag.moved && drag.was[0] === drag.start && drag.was[1] === drag.start + 1) setValue(0, NBINS);
+  drag = null;
+});
+hist.addEventListener("pointerleave", () => { if (!drag) document.getElementById("hint-value").textContent = ""; });
+
+const lo = document.getElementById("lo"), hi = document.getElementById("hi");
+for (const el of [lo, hi]) { el.min = 0; el.max = NBINS; el.step = 1; }
+function syncSlider() {
+  lo.value = F.lo; hi.value = F.hi;
+  const fill = document.getElementById("range-fill");
+  fill.style.left = 100 * F.lo / NBINS + "%"; fill.style.right = 100 * (1 - F.hi / NBINS) + "%";
+  lo.setAttribute("aria-valuetext", money(EDGES[F.lo]) || "$0");
+  hi.setAttribute("aria-valuetext", F.hi === NBINS ? "No maximum" : money(EDGES[F.hi]));
+}
+lo.oninput = () => setValue(Math.min(+lo.value, F.hi - 1), F.hi);
+hi.oninput = () => setValue(F.lo, Math.max(+hi.value, F.lo + 1));
+
+let raf = 0;
+function setValue(l, h) {
+  F.lo = l; F.hi = h;
+  cancelAnimationFrame(raf); raf = requestAnimationFrame(applyFilter);
+}
+
+// Category rows: stacked bars; tap a row to show only it, tap more to add.
+function drawRows(id, labels, counts, sel, pickedIdx, clearId) {
+  const max = Math.max(1, ...counts.map(sum)), all = sel.size === labels.length;
+  document.getElementById(id).innerHTML = labels.map((l, i) => {
+    const t = sum(counts[i]);
+    if (!t && id === "rows-where" && i === labels.length - 1) return "";  // hide "No address" when empty
+    return `<div class="r${sel.has(i) ? "" : " off"}" data-i="${i}" title="Tap to filter">
+      <span class="lbl${pickedIdx === i ? " picked" : ""}">${l}</span>
+      <span class="stack" style="width:${Math.max(2, 100 * t / max)}%">${t ? stackSpans(counts[i], t) : ""}</span>
+      <span class="num">${fmt(t)}</span></div>`;
+  }).join("");
+  document.getElementById(clearId).hidden = all;
+}
+function rowToggle(set, n) {
+  return ev => {
+    const r = ev.target.closest(".r"); if (!r) return;
+    const i = +r.dataset.i;
+    if (set.size === n) { set.clear(); set.add(i); }        // first tap: only this one
+    else if (set.has(i)) { set.delete(i); if (!set.size) for (let j = 0; j < n; j++) set.add(j); }
+    else set.add(i);
+    applyFilter();
+  };
+}
+document.getElementById("rows-where").onclick = rowToggle(F.where, WHERE.length);
+document.getElementById("rows-use").onclick = rowToggle(F.use, USES.length);
+document.getElementById("clear-where").onclick = () => { WHERE.forEach((_, i) => F.where.add(i)); applyFilter(); };
+document.getElementById("clear-use").onclick = () => { USES.forEach((_, i) => F.use.add(i)); applyFilter(); };
+document.getElementById("reset").onclick = () => {
+  CATS.forEach((_, i) => active.add(i));
+  document.querySelectorAll("#legend li").forEach(li => li.classList.remove("off"));
+  WHERE.forEach((_, i) => F.where.add(i)); USES.forEach((_, i) => F.use.add(i));
+  F.lo = 0; F.hi = NBINS;
+  applyFilter();
+};
+document.getElementById("scope").onclick = ev => {
+  const b = ev.target.closest("button"); if (!b) return;
+  F.scope = b.dataset.scope;
+  document.querySelectorAll("#scope button").forEach(x => x.classList.toggle("on", x === b));
+  updateView();
+};
+
+let moveRaf = 0;
+map.on("move", () => { if (F.scope === "view") { cancelAnimationFrame(moveRaf); moveRaf = requestAnimationFrame(updateView); } });
+map.on("load", updateView);
+map.on("error", e => {
+  if (String(e.error?.message || "").includes("parcels")) flash("Parcel data not available yet.", 5000);
+});
+
+// ---- popups -----------------------------------------------------------
+map.on("click", "parcels-fill", e => {
+  const p = e.features[0].properties, c = CATS[p.c];
+  if (p.o === undefined) {  // zoomed-out tiles carry colors only
+    map.flyTo({ center: e.lngLat, zoom: 16 });
+    return flash("Zooming in — tap a lot again for details.");
+  }
+  map.setFilter("parcels-selected", ["==", ["get", "id"], p.id]);
+  const vk = p.v ? +p.v / 1000 : -1;
+  picked = { w: p.w, u: p.u, bin: vk < 0 ? -1 : EDGES.findIndex((e, i) => vk >= e && vk < EDGES[i + 1]) };
+  updateView();
+  const rows = [
+    ["Owner", p.o], ["Mailing address", p.m], ["Tax bill goes", WHERE[p.w]], ["Land use", p.lu],
+    ["Year built", p.y], ["Assessed value", p.v ? "$" + fmt(+p.v) : ""], ["Parcel ID", p.id],
+  ].filter(r => r[1]).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("");
+  new maplibregl.Popup({ maxWidth: "300px" }).setLngLat(e.lngLat).setHTML(
+    `<div class="pop"><div class="addr">${esc(p.a || "No address")}</div>
+     <span class="chip" style="background:${c.hex}">${c.label}</span>
+     <div class="why">${esc(p.r)}</div><dl>${rows}</dl></div>`
+  ).on("close", () => {
+    map.setFilter("parcels-selected", ["==", ["get", "id"], ""]);
+    picked = null; updateView();
+  }).addTo(map);
+});
+map.on("mouseenter", "parcels-fill", () => map.getCanvas().style.cursor = "pointer");
+map.on("mouseleave", "parcels-fill", () => map.getCanvas().style.cursor = "");
+
+// ---- search (OpenStreetMap Nominatim, limited to Richmond) ------------
+document.getElementById("search").addEventListener("submit", async e => {
+  e.preventDefault();
+  const q = document.getElementById("q").value.trim(); if (!q) return;
+  const url = "https://nominatim.openstreetmap.org/search?" + new URLSearchParams({
+    q: /richmond/i.test(q) ? q : q + ", Richmond, VA", format: "json", limit: 1,
+    viewbox: "-77.61,37.61,-77.38,37.44", bounded: 1,
+  });
+  try {
+    const [hit] = await (await fetch(url)).json();
+    if (!hit) return flash("No match in Richmond for “" + q + "”.");
+    const isPlace = ["suburb", "neighbourhood", "quarter"].includes(hit.addresstype || hit.type);
+    map.flyTo({ center: [+hit.lon, +hit.lat], zoom: isPlace ? 15 : 17.5 });
+    document.getElementById("q").blur();
+    if (window.innerWidth <= 640) setCollapsed(true);
+  } catch { flash("Search is unavailable right now."); }
+});
+
+// ---- mobile bottom sheet ----------------------------------------------
+const panel = document.getElementById("panel"), toggle = document.getElementById("toggle");
+function setCollapsed(c) { panel.classList.toggle("collapsed", c); toggle.textContent = c ? "▴" : "▾"; }
+toggle.onclick = () => setCollapsed(!panel.classList.contains("collapsed"));
+if (window.innerWidth <= 640) setCollapsed(true);
+</script>
+</body>
+</html>
